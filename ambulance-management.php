@@ -127,11 +127,13 @@ if ($can_view_own_bookings) {
         SELECT ab.*, 
         a.vehicle_number, a.vehicle_type, a.driver_name, a.driver_phone,
         p.first_name, p.last_name, p.phone as patient_phone,
-        CONCAT(u.first_name, ' ', u.last_name) as created_by_name
+        COALESCE(CONCAT(d.first_name, ' ', d.last_name), CONCAT(s.first_name, ' ', s.last_name), 'System') as created_by_name
         FROM ambulance_bookings ab
         JOIN ambulances a ON ab.ambulance_id = a.id
         LEFT JOIN patients p ON ab.patient_id = p.id
         LEFT JOIN users u ON ab.created_by = u.id
+        LEFT JOIN doctors d ON u.id = d.user_id
+        LEFT JOIN staff s ON u.id = s.user_id
         WHERE ab.patient_id = ?
         ORDER BY ab.created_at DESC
     ", [$patient_id])->fetchAll();
@@ -141,11 +143,13 @@ if ($can_view_own_bookings) {
         SELECT ab.*, 
         a.vehicle_number, a.vehicle_type, a.driver_name, a.driver_phone,
         p.first_name, p.last_name, p.phone as patient_phone,
-        CONCAT(u.first_name, ' ', u.last_name) as created_by_name
+        COALESCE(CONCAT(d.first_name, ' ', d.last_name), CONCAT(s.first_name, ' ', s.last_name), 'System') as created_by_name
         FROM ambulance_bookings ab
         JOIN ambulances a ON ab.ambulance_id = a.id
         LEFT JOIN patients p ON ab.patient_id = p.id
         LEFT JOIN users u ON ab.created_by = u.id
+        LEFT JOIN doctors d ON u.id = d.user_id
+        LEFT JOIN staff s ON u.id = s.user_id
         ORDER BY ab.created_at DESC
     ")->fetchAll();
 } else {
