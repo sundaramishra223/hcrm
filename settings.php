@@ -172,6 +172,9 @@ try {
                     <button class="tab-btn" data-tab="departments">
                         <i class="fas fa-building"></i> Departments
                     </button>
+                    <button class="tab-btn" data-tab="security">
+                        <i class="fas fa-shield-alt"></i> Security
+                    </button>
                 </div>
 
                 <!-- General Settings -->
@@ -331,6 +334,33 @@ try {
                                 </label>
                                 <p class="feature-description">Enable video consultation appointments</p>
                             </div>
+
+                            <div class="feature-item">
+                                <label class="form-label">
+                                    <input type="checkbox" name="enable_backup_system" 
+                                           <?php echo ($current_settings['enable_backup_system'] ?? 'false') === 'true' ? 'checked' : ''; ?>>
+                                    Auto Backup System
+                                </label>
+                                <p class="feature-description">Enable automatic database backup</p>
+                            </div>
+
+                            <div class="feature-item">
+                                <label class="form-label">
+                                    <input type="checkbox" name="enable_audit_logging" 
+                                           <?php echo ($current_settings['enable_audit_logging'] ?? 'true') === 'true' ? 'checked' : ''; ?>>
+                                    Audit Logging
+                                </label>
+                                <p class="feature-description">Track all system activities and changes</p>
+                            </div>
+
+                            <div class="feature-item">
+                                <label class="form-label">
+                                    <input type="checkbox" name="enable_two_factor_auth" 
+                                           <?php echo ($current_settings['enable_two_factor_auth'] ?? 'false') === 'true' ? 'checked' : ''; ?>>
+                                    Two-Factor Authentication
+                                </label>
+                                <p class="feature-description">Enable 2FA for enhanced security</p>
+                            </div>
                         </div>
 
                         <button type="submit" class="btn btn-primary">
@@ -434,6 +464,118 @@ try {
                             </tbody>
                         </table>
                     </div>
+                </div>
+
+                <!-- Security Settings -->
+                <div class="tab-content" id="security">
+                    <form method="POST" class="settings-form">
+                        <input type="hidden" name="action" value="update_settings">
+                        
+                        <div class="security-grid">
+                            <div class="security-item">
+                                <h4>Password Policy</h4>
+                                <div class="form-group">
+                                    <label class="form-label">Minimum Password Length</label>
+                                    <input type="number" name="min_password_length" class="form-control" 
+                                           value="<?php echo htmlspecialchars($current_settings['min_password_length'] ?? '8'); ?>" min="6" max="20">
+                                </div>
+                                <div class="form-group">
+                                    <label class="form-label">
+                                        <input type="checkbox" name="require_uppercase" 
+                                               <?php echo ($current_settings['require_uppercase'] ?? 'true') === 'true' ? 'checked' : ''; ?>>
+                                        Require Uppercase Letters
+                                    </label>
+                                </div>
+                                <div class="form-group">
+                                    <label class="form-label">
+                                        <input type="checkbox" name="require_numbers" 
+                                               <?php echo ($current_settings['require_numbers'] ?? 'true') === 'true' ? 'checked' : ''; ?>>
+                                        Require Numbers
+                                    </label>
+                                </div>
+                                <div class="form-group">
+                                    <label class="form-label">
+                                        <input type="checkbox" name="require_special_chars" 
+                                               <?php echo ($current_settings['require_special_chars'] ?? 'false') === 'true' ? 'checked' : ''; ?>>
+                                        Require Special Characters
+                                    </label>
+                                </div>
+                            </div>
+
+                            <div class="security-item">
+                                <h4>Session Management</h4>
+                                <div class="form-group">
+                                    <label class="form-label">Session Timeout (minutes)</label>
+                                    <input type="number" name="session_timeout" class="form-control" 
+                                           value="<?php echo htmlspecialchars($current_settings['session_timeout'] ?? '30'); ?>" min="5" max="480">
+                                </div>
+                                <div class="form-group">
+                                    <label class="form-label">
+                                        <input type="checkbox" name="force_logout_on_password_change" 
+                                               <?php echo ($current_settings['force_logout_on_password_change'] ?? 'true') === 'true' ? 'checked' : ''; ?>>
+                                        Force Logout on Password Change
+                                    </label>
+                                </div>
+                                <div class="form-group">
+                                    <label class="form-label">
+                                        <input type="checkbox" name="prevent_concurrent_logins" 
+                                               <?php echo ($current_settings['prevent_concurrent_logins'] ?? 'false') === 'true' ? 'checked' : ''; ?>>
+                                        Prevent Concurrent Logins
+                                    </label>
+                                </div>
+                            </div>
+
+                            <div class="security-item">
+                                <h4>Login Security</h4>
+                                <div class="form-group">
+                                    <label class="form-label">Maximum Login Attempts</label>
+                                    <input type="number" name="max_login_attempts" class="form-control" 
+                                           value="<?php echo htmlspecialchars($current_settings['max_login_attempts'] ?? '5'); ?>" min="3" max="10">
+                                </div>
+                                <div class="form-group">
+                                    <label class="form-label">Lockout Duration (minutes)</label>
+                                    <input type="number" name="lockout_duration" class="form-control" 
+                                           value="<?php echo htmlspecialchars($current_settings['lockout_duration'] ?? '15'); ?>" min="5" max="60">
+                                </div>
+                                <div class="form-group">
+                                    <label class="form-label">
+                                        <input type="checkbox" name="enable_captcha" 
+                                               <?php echo ($current_settings['enable_captcha'] ?? 'false') === 'true' ? 'checked' : ''; ?>>
+                                        Enable CAPTCHA on Login
+                                    </label>
+                                </div>
+                            </div>
+
+                            <div class="security-item">
+                                <h4>Data Protection</h4>
+                                <div class="form-group">
+                                    <label class="form-label">
+                                        <input type="checkbox" name="enable_data_encryption" 
+                                               <?php echo ($current_settings['enable_data_encryption'] ?? 'true') === 'true' ? 'checked' : ''; ?>>
+                                        Enable Data Encryption
+                                    </label>
+                                </div>
+                                <div class="form-group">
+                                    <label class="form-label">
+                                        <input type="checkbox" name="enable_ssl_redirect" 
+                                               <?php echo ($current_settings['enable_ssl_redirect'] ?? 'false') === 'true' ? 'checked' : ''; ?>>
+                                        Force HTTPS Redirect
+                                    </label>
+                                </div>
+                                <div class="form-group">
+                                    <label class="form-label">
+                                        <input type="checkbox" name="enable_csrf_protection" 
+                                               <?php echo ($current_settings['enable_csrf_protection'] ?? 'true') === 'true' ? 'checked' : ''; ?>>
+                                        Enable CSRF Protection
+                                    </label>
+                                </div>
+                            </div>
+                        </div>
+
+                        <button type="submit" class="btn btn-primary">
+                            <i class="fas fa-save"></i> Save Security Settings
+                        </button>
+                    </form>
                 </div>
             </div>
         </main>
@@ -572,6 +714,28 @@ try {
             grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
             gap: 1.5rem;
             margin-bottom: 2rem;
+        }
+
+        .security-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(350px, 1fr));
+            gap: 2rem;
+            margin-bottom: 2rem;
+        }
+
+        .security-item {
+            background: var(--bg-secondary);
+            padding: 1.5rem;
+            border-radius: var(--border-radius);
+            border: 1px solid var(--border-light);
+        }
+
+        .security-item h4 {
+            color: var(--primary-color);
+            margin-bottom: 1rem;
+            font-size: 1.1rem;
+            border-bottom: 2px solid var(--primary-color);
+            padding-bottom: 0.5rem;
         }
 
         .feature-item {
