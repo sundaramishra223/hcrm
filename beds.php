@@ -5,361 +5,438 @@ require_once 'includes/functions.php';
 
 // Check if user is logged in
 if (!isset($_SESSION['user_id'])) {
-    header('Location: login.php');
-    exit();
+    header('Location: index.php');
+    exit;
 }
 
-$user_id = $_SESSION['user_id'];
 $user_role = $_SESSION['role'];
-
-// Check if user has access to bed management
 $allowed_roles = ['admin', 'nurse', 'receptionist', 'doctor', 'intern_doctor', 'intern_nurse'];
+
 if (!in_array($user_role, $allowed_roles)) {
-    showErrorAlert('Access Denied: You do not have permission to access bed management.');
     header('Location: dashboard.php');
-    exit();
+    exit;
 }
+
+$db = new Database();
+$message = '';
 
 // Handle form submissions
-if ($_SERVER['REQUEST_METHOD'] === 'POST') {
-    if (isset($_POST['action'])) {
+if ($_POST && isset($_POST['action'])) {
+    try {
         switch ($_POST['action']) {
             case 'add_bed':
-                $ward_number = $_POST['ward_number'];
-                $bed_number = $_POST['bed_number'];
-                $bed_type = $_POST['bed_type'];
-                $status = 'available';
-                
-                $stmt = $pdo->prepare("INSERT INTO beds (ward_number, bed_number, bed_type, status, created_at) VALUES (?, ?, ?, ?, NOW())");
-                if ($stmt->execute([$ward_number, $bed_number, $bed_type, $status])) {
-                    showSuccessAlert('Bed added successfully!');
-                } else {
-                    showErrorAlert('Failed to add bed. Please try again.');
-                }
+                $sql = "INSERT INTO beds (bed_number, bed_type, status, daily_rate, created_at) VALUES (?, ?, 'available', ?, NOW())";
+                $db->query($sql, [
+                    $_POST['bed_number'],
+                    $_POST['bed_type'],
+                    $_POST['daily_rate'] ?? 0
+                ]);
+                $message = "Bed added successfully!";
                 break;
                 
             case 'assign_patient':
-                $bed_id = $_POST['bed_id'];
-                $patient_id = $_POST['patient_id'];
-                $admission_date = $_POST['admission_date'];
-                $expected_discharge = $_POST['expected_discharge'];
-                $notes = $_POST['notes'];
+                $db->getConnection()->beginTransaction();
+                
+                // Check if bed is available
+                $bed = $db->query("SELECT status FROM beds WHERE id = ?", [$_POST['bed_id']])->fetch();
+                if ($bed['status'] !== 'available') {
+                    throw new Exception("Bed is not available for assignment");
+                }
                 
                 // Update bed status
-                $stmt = $pdo->prepare("UPDATE beds SET status = 'occupied', patient_id = ?, admission_date = ?, expected_discharge = ?, notes = ? WHERE id = ?");
-                if ($stmt->execute([$patient_id, $admission_date, $expected_discharge, $notes, $bed_id])) {
-                    showSuccessAlert('Patient assigned to bed successfully!');
-                } else {
-                    showErrorAlert('Failed to assign patient. Please try again.');
-                }
+                $db->query("UPDATE beds SET status = 'occupied', current_patient_id = ?, last_updated = NOW() WHERE id = ?", 
+                          [$_POST['patient_id'], $_POST['bed_id']]);
+                
+                // Create bed assignment record
+                $assignment_sql = "INSERT INTO bed_assignments (bed_id, patient_id, assigned_date, status, notes, assigned_by) VALUES (?, ?, ?, 'active', ?, ?)";
+                $db->query($assignment_sql, [
+                    $_POST['bed_id'],
+                    $_POST['patient_id'],
+                    $_POST['admission_date'] ?? date('Y-m-d'),
+                    $_POST['notes'] ?? '',
+                    $_SESSION['user_id']
+                ]);
+                
+                $db->getConnection()->commit();
+                $message = "Patient assigned to bed successfully!";
                 break;
                 
             case 'discharge_patient':
-                $bed_id = $_POST['bed_id'];
+                $db->getConnection()->beginTransaction();
                 
-                $stmt = $pdo->prepare("UPDATE beds SET status = 'available', patient_id = NULL, admission_date = NULL, expected_discharge = NULL, notes = NULL WHERE id = ?");
-                if ($stmt->execute([$bed_id])) {
-                    showSuccessAlert('Patient discharged successfully!');
-                } else {
-                    showErrorAlert('Failed to discharge patient. Please try again.');
-                }
+                // Update bed assignment
+                $db->query("UPDATE bed_assignments SET status = 'discharged', discharge_date = NOW() WHERE id = ?", 
+                          [$_POST['assignment_id']]);
+                
+                // Get bed info and update status
+                $assignment = $db->query("SELECT bed_id FROM bed_assignments WHERE id = ?", [$_POST['assignment_id']])->fetch();
+                $db->query("UPDATE beds SET status = 'maintenance', current_patient_id = NULL, last_updated = NOW() WHERE id = ?", 
+                          [$assignment['bed_id']]);
+                
+                $db->getConnection()->commit();
+                $message = "Patient discharged successfully! Bed marked for maintenance.";
                 break;
                 
-            case 'update_status':
-                $bed_id = $_POST['bed_id'];
-                $status = $_POST['status'];
-                
-                $stmt = $pdo->prepare("UPDATE beds SET status = ? WHERE id = ?");
-                if ($stmt->execute([$status, $bed_id])) {
-                    showSuccessAlert('Bed status updated successfully!');
-                } else {
-                    showErrorAlert('Failed to update bed status. Please try again.');
-                }
+            case 'update_bed_status':
+                $db->query("UPDATE beds SET status = ?, last_updated = NOW() WHERE id = ?", 
+                          [$_POST['new_status'], $_POST['bed_id']]);
+                $message = "Bed status updated successfully!";
                 break;
         }
+    } catch (Exception $e) {
+        if ($db->getConnection()->inTransaction()) {
+            $db->getConnection()->rollBack();
+        }
+        $message = "Error: " . $e->getMessage();
     }
 }
 
-// Get bed statistics
+// Get beds with patient information
+$beds = [];
+try {
+    $beds = $db->query("
+        SELECT b.*, 
+        ba.id as assignment_id,
+        ba.assigned_date,
+        ba.notes as assignment_notes,
+        CONCAT(p.first_name, ' ', p.last_name) as patient_name,
+        p.patient_id,
+        p.phone as patient_phone
+        FROM beds b
+        LEFT JOIN bed_assignments ba ON b.id = ba.bed_id AND ba.status = 'active'
+        LEFT JOIN patients p ON ba.patient_id = p.id
+        ORDER BY b.bed_number
+    ")->fetchAll();
+} catch (Exception $e) {
+    $beds = [];
+}
+
+// Get patients available for assignment
+$available_patients = [];
+try {
+    $available_patients = $db->query("
+        SELECT p.id, p.patient_id, CONCAT(p.first_name, ' ', p.last_name) as full_name, p.phone
+        FROM patients p
+        LEFT JOIN bed_assignments ba ON p.id = ba.patient_id AND ba.status = 'active'
+        WHERE ba.id IS NULL
+        ORDER BY p.first_name, p.last_name
+    ")->fetchAll();
+} catch (Exception $e) {
+    $available_patients = [];
+}
+
+// Get statistics
 $stats = [];
-$stmt = $pdo->query("SELECT 
-    COUNT(*) as total_beds,
-    SUM(CASE WHEN status = 'available' THEN 1 ELSE 0 END) as available_beds,
-    SUM(CASE WHEN status = 'occupied' THEN 1 ELSE 0 END) as occupied_beds,
-    SUM(CASE WHEN status = 'maintenance' THEN 1 ELSE 0 END) as maintenance_beds
-FROM beds");
-$stats = $stmt->fetch(PDO::FETCH_ASSOC);
-
-// Get all beds
-$stmt = $pdo->query("SELECT b.*, p.name as patient_name, p.phone as patient_phone 
-                     FROM beds b 
-                     LEFT JOIN patients p ON b.patient_id = p.id 
-                     ORDER BY b.ward_number, b.bed_number");
-$beds = $stmt->fetchAll(PDO::FETCH_ASSOC);
-
-// Get available patients for assignment
-$stmt = $pdo->query("SELECT id, name, phone FROM patients WHERE id NOT IN (SELECT patient_id FROM beds WHERE patient_id IS NOT NULL)");
-$available_patients = $stmt->fetchAll(PDO::FETCH_ASSOC);
+try {
+    $stats['total_beds'] = $db->query("SELECT COUNT(*) as count FROM beds")->fetch()['count'];
+    $stats['occupied_beds'] = $db->query("SELECT COUNT(*) as count FROM beds WHERE status = 'occupied'")->fetch()['count'];
+    $stats['available_beds'] = $db->query("SELECT COUNT(*) as count FROM beds WHERE status = 'available'")->fetch()['count'];
+    $stats['maintenance_beds'] = $db->query("SELECT COUNT(*) as count FROM beds WHERE status = 'maintenance'")->fetch()['count'];
+    $stats['admitted_today'] = $db->query("SELECT COUNT(*) as count FROM bed_assignments WHERE status = 'active' AND DATE(assigned_date) = CURDATE()")->fetch()['count'];
+    $stats['discharged_today'] = $db->query("SELECT COUNT(*) as count FROM bed_assignments WHERE status = 'discharged' AND DATE(discharge_date) = CURDATE()")->fetch()['count'];
+} catch (Exception $e) {
+    $stats = ['total_beds' => 0, 'occupied_beds' => 0, 'available_beds' => 0, 'maintenance_beds' => 0, 'admitted_today' => 0, 'discharged_today' => 0];
+}
 ?>
-
 <!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Bed Management - HMS</title>
-    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/css/bootstrap.min.css" rel="stylesheet">
-    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+    <title>Bed Management - Hospital CRM</title>
+    <link rel="stylesheet" href="assets/css/style.css">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
     <style>
-        .stats-card {
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            color: white;
-            border-radius: 15px;
-            padding: 20px;
-            margin-bottom: 20px;
+        .bed-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(350px, 1fr));
+            gap: 1.5rem;
+            margin-top: 2rem;
         }
+        
         .bed-card {
-            border-radius: 10px;
-            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
-            transition: transform 0.2s;
+            background: var(--bg-card);
+            border-radius: var(--radius-xl);
+            padding: 1.5rem;
+            box-shadow: var(--shadow-sm);
+            border: 1px solid var(--border-color);
+            transition: var(--transition-all);
+            position: relative;
+            overflow: hidden;
         }
+        
         .bed-card:hover {
+            box-shadow: var(--shadow-lg);
             transform: translateY(-2px);
         }
-        .status-available { background-color: #d4edda; border-left: 4px solid #28a745; }
-        .status-occupied { background-color: #f8d7da; border-left: 4px solid #dc3545; }
-        .status-maintenance { background-color: #fff3cd; border-left: 4px solid #ffc107; }
-        .nav-tabs .nav-link.active {
-            background-color: #007bff;
-            color: white;
-            border-color: #007bff;
+        
+        .bed-status {
+            position: absolute;
+            top: 1rem;
+            right: 1rem;
+            padding: 0.25rem 0.75rem;
+            border-radius: var(--radius-full);
+            font-size: 0.75rem;
+            font-weight: 600;
+            text-transform: uppercase;
+        }
+        
+        .status-available {
+            background: rgba(16, 185, 129, 0.1);
+            color: var(--success-color);
+            border: 1px solid rgba(16, 185, 129, 0.2);
+        }
+        
+        .status-occupied {
+            background: rgba(239, 68, 68, 0.1);
+            color: var(--danger-color);
+            border: 1px solid rgba(239, 68, 68, 0.2);
+        }
+        
+        .status-maintenance {
+            background: rgba(245, 158, 11, 0.1);
+            color: var(--warning-color);
+            border: 1px solid rgba(245, 158, 11, 0.2);
+        }
+        
+        .bed-header {
+            margin-bottom: 1rem;
+        }
+        
+        .bed-number {
+            font-size: 1.5rem;
+            font-weight: 700;
+            color: var(--text-primary);
+            margin-bottom: 0.25rem;
+        }
+        
+        .bed-type {
+            color: var(--text-secondary);
+            font-size: 0.875rem;
+        }
+        
+        .bed-details {
+            margin-bottom: 1rem;
+        }
+        
+        .bed-actions {
+            display: flex;
+            gap: 0.5rem;
+            flex-wrap: wrap;
         }
     </style>
 </head>
 <body>
-    <div class="container-fluid">
-        <div class="row">
-            <!-- Sidebar -->
-            <nav class="col-md-3 col-lg-2 d-md-block bg-dark sidebar collapse">
-                <div class="position-sticky pt-3">
-                    <ul class="nav flex-column">
-                        <li class="nav-item">
-                            <a class="nav-link text-white" href="dashboard.php">
-                                <i class="fas fa-tachometer-alt"></i> Dashboard
-                            </a>
-                        </li>
-                        <li class="nav-item">
-                            <a class="nav-link text-white active" href="beds.php">
-                                <i class="fas fa-bed"></i> Bed Management
-                            </a>
-                        </li>
-                    </ul>
-                </div>
-            </nav>
+    <div class="dashboard-container">
+        <!-- Sidebar -->
+        <aside class="sidebar" id="sidebar">
+            <div class="sidebar-header">
+                <h2><i class="fas fa-hospital"></i> Hospital CRM</h2>
+                <p><?php echo htmlspecialchars($_SESSION['role_display']); ?></p>
+            </div>
+            <ul class="sidebar-menu">
+                <li><a href="dashboard.php"><i class="fas fa-home"></i> Dashboard</a></li>
+                <li><a href="beds.php" class="active"><i class="fas fa-bed"></i> Bed Management</a></li>
+                <li><a href="patient-monitoring.php"><i class="fas fa-user-injured"></i> Patient Monitoring</a></li>
+                <li><a href="patients.php"><i class="fas fa-users"></i> Patients</a></li>
+                <li><a href="equipment.php"><i class="fas fa-tools"></i> Equipment</a></li>
+                <li><a href="ambulance-management.php"><i class="fas fa-ambulance"></i> Ambulance</a></li>
+                <li><a href="profile.php"><i class="fas fa-user"></i> Profile</a></li>
+            </ul>
+        </aside>
 
-            <!-- Main content -->
-            <main class="col-md-9 ms-sm-auto col-lg-10 px-md-4">
-                <div class="d-flex justify-content-between flex-wrap flex-md-nowrap align-items-center pt-3 pb-2 mb-3 border-bottom">
-                    <h1 class="h2"><i class="fas fa-bed"></i> Bed Management</h1>
-                    <button class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#addBedModal">
-                        <i class="fas fa-plus"></i> Add New Bed
+        <!-- Main Content -->
+        <main class="main-content">
+            <!-- Header -->
+            <div class="dashboard-header">
+                <div class="header-left">
+                    <h1><i class="fas fa-bed"></i> Bed Management</h1>
+                    <p>Manage hospital beds and patient assignments</p>
+                </div>
+                <div class="header-right">
+                    <div class="theme-controls">
+                        <button class="theme-toggle" id="themeToggle" title="Toggle Dark Mode">
+                            <i class="fas fa-moon"></i>
+                        </button>
+                        <button class="color-toggle" id="colorToggle" title="Change Colors">
+                            <i class="fas fa-palette"></i>
+                        </button>
+                    </div>
+                    <div class="user-info">
+                        <i class="fas fa-user-circle"></i>
+                        <span><?php echo htmlspecialchars($_SESSION['role_display']); ?></span>
+                    </div>
+                    <a href="logout.php" class="btn btn-danger btn-sm">
+                        <i class="fas fa-sign-out-alt"></i> Logout
+                    </a>
+                </div>
+            </div>
+
+            <?php if ($message): ?>
+                <div class="alert alert-success animate-fade-in">
+                    <?php echo htmlspecialchars($message); ?>
+                </div>
+            <?php endif; ?>
+
+            <!-- Statistics -->
+            <div class="stats-grid">
+                <div class="stat-card animate-fade-in">
+                    <h3><?php echo number_format($stats['total_beds']); ?></h3>
+                    <p>Total Beds</p>
+                </div>
+                <div class="stat-card animate-fade-in" style="animation-delay: 0.1s;">
+                    <h3 class="text-success"><?php echo number_format($stats['available_beds']); ?></h3>
+                    <p>Available</p>
+                </div>
+                <div class="stat-card animate-fade-in" style="animation-delay: 0.2s;">
+                    <h3 class="text-danger"><?php echo number_format($stats['occupied_beds']); ?></h3>
+                    <p>Occupied</p>
+                </div>
+                <div class="stat-card animate-fade-in" style="animation-delay: 0.3s;">
+                    <h3 class="text-warning"><?php echo number_format($stats['maintenance_beds']); ?></h3>
+                    <p>Maintenance</p>
+                </div>
+                <div class="stat-card animate-fade-in" style="animation-delay: 0.4s;">
+                    <h3><?php echo number_format($stats['admitted_today']); ?></h3>
+                    <p>Admitted Today</p>
+                </div>
+                <div class="stat-card animate-fade-in" style="animation-delay: 0.5s;">
+                    <h3><?php echo number_format($stats['discharged_today']); ?></h3>
+                    <p>Discharged Today</p>
+                </div>
+            </div>
+
+            <!-- Action Buttons -->
+            <div class="d-flex gap-4 mb-6">
+                <?php if (in_array($user_role, ['admin', 'nurse', 'receptionist'])): ?>
+                    <button class="btn btn-primary" onclick="showAddBedModal()">
+                        <i class="fas fa-plus"></i> Add Bed
                     </button>
-                </div>
+                <?php endif; ?>
+            </div>
 
-                <!-- Statistics -->
-                <div class="row mb-4">
-                    <div class="col-md-3">
-                        <div class="stats-card">
-                            <h4><?php echo $stats['total_beds']; ?></h4>
-                            <p class="mb-0">Total Beds</p>
+            <!-- Beds Grid -->
+            <div class="bed-grid">
+                <?php if (empty($beds)): ?>
+                    <div class="card text-center" style="grid-column: 1 / -1;">
+                        <div class="card-body">
+                            <i class="fas fa-bed" style="font-size: 4rem; opacity: 0.3; margin-bottom: 1rem;"></i>
+                            <h3>No beds found</h3>
+                            <p>Add your first bed to get started</p>
                         </div>
                     </div>
-                    <div class="col-md-3">
-                        <div class="stats-card" style="background: linear-gradient(135deg, #28a745 0%, #20c997 100%);">
-                            <h4><?php echo $stats['available_beds']; ?></h4>
-                            <p class="mb-0">Available</p>
-                        </div>
-                    </div>
-                    <div class="col-md-3">
-                        <div class="stats-card" style="background: linear-gradient(135deg, #dc3545 0%, #fd7e14 100%);">
-                            <h4><?php echo $stats['occupied_beds']; ?></h4>
-                            <p class="mb-0">Occupied</p>
-                        </div>
-                    </div>
-                    <div class="col-md-3">
-                        <div class="stats-card" style="background: linear-gradient(135deg, #ffc107 0%, #fd7e14 100%);">
-                            <h4><?php echo $stats['maintenance_beds']; ?></h4>
-                            <p class="mb-0">Maintenance</p>
-                        </div>
-                    </div>
-                </div>
-
-                <!-- Tabs -->
-                <ul class="nav nav-tabs" id="bedTabs" role="tablist">
-                    <li class="nav-item" role="presentation">
-                        <button class="nav-link active" id="all-tab" data-bs-toggle="tab" data-bs-target="#all" type="button" role="tab">
-                            All Beds
-                        </button>
-                    </li>
-                    <li class="nav-item" role="presentation">
-                        <button class="nav-link" id="available-tab" data-bs-toggle="tab" data-bs-target="#available" type="button" role="tab">
-                            Available
-                        </button>
-                    </li>
-                    <li class="nav-item" role="presentation">
-                        <button class="nav-link" id="occupied-tab" data-bs-toggle="tab" data-bs-target="#occupied" type="button" role="tab">
-                            Occupied
-                        </button>
-                    </li>
-                </ul>
-
-                <!-- Tab content -->
-                <div class="tab-content" id="bedTabsContent">
-                    <!-- All Beds -->
-                    <div class="tab-pane fade show active" id="all" role="tabpanel">
-                        <div class="row mt-3">
-                            <?php foreach ($beds as $bed): ?>
-                                <div class="col-md-6 col-lg-4 mb-3">
-                                    <div class="card bed-card status-<?php echo $bed['status']; ?>">
-                                        <div class="card-body">
-                                            <h5 class="card-title">
-                                                Ward <?php echo htmlspecialchars($bed['ward_number']); ?> - Bed <?php echo htmlspecialchars($bed['bed_number']); ?>
-                                            </h5>
-                                            <p class="card-text">
-                                                <strong>Type:</strong> <?php echo htmlspecialchars($bed['bed_type']); ?><br>
-                                                <strong>Status:</strong> 
-                                                <span class="badge bg-<?php echo $bed['status'] === 'available' ? 'success' : ($bed['status'] === 'occupied' ? 'danger' : 'warning'); ?>">
-                                                    <?php echo ucfirst($bed['status']); ?>
-                                                </span>
-                                            </p>
-                                            
-                                            <?php if ($bed['patient_name']): ?>
-                                                <p class="card-text">
-                                                    <strong>Patient:</strong> <?php echo htmlspecialchars($bed['patient_name']); ?><br>
-                                                    <strong>Phone:</strong> <?php echo htmlspecialchars($bed['patient_phone']); ?><br>
-                                                    <strong>Admitted:</strong> <?php echo date('M d, Y', strtotime($bed['admission_date'])); ?><br>
-                                                    <strong>Expected Discharge:</strong> <?php echo date('M d, Y', strtotime($bed['expected_discharge'])); ?>
-                                                </p>
-                                            <?php endif; ?>
-                                            
-                                            <div class="btn-group" role="group">
-                                                <?php if ($bed['status'] === 'available'): ?>
-                                                    <button class="btn btn-sm btn-primary" onclick="assignPatient(<?php echo $bed['id']; ?>)">
-                                                        <i class="fas fa-user-plus"></i> Assign Patient
-                                                    </button>
-                                                <?php elseif ($bed['status'] === 'occupied'): ?>
-                                                    <button class="btn btn-sm btn-success" onclick="dischargePatient(<?php echo $bed['id']; ?>)">
-                                                        <i class="fas fa-user-minus"></i> Discharge
-                                                    </button>
-                                                <?php endif; ?>
-                                                
-                                                <button class="btn btn-sm btn-info" onclick="updateStatus(<?php echo $bed['id']; ?>, '<?php echo $bed['status']; ?>')">
-                                                    <i class="fas fa-edit"></i> Update Status
-                                                </button>
-                                            </div>
-                                        </div>
+                <?php else: ?>
+                    <?php foreach ($beds as $bed): ?>
+                        <div class="bed-card animate-fade-in">
+                            <!-- Status Badge -->
+                            <div class="bed-status status-<?php echo $bed['status']; ?>">
+                                <?php echo ucfirst($bed['status']); ?>
+                            </div>
+                            
+                            <!-- Bed Header -->
+                            <div class="bed-header">
+                                <h4 class="bed-number">Bed <?php echo htmlspecialchars($bed['bed_number']); ?></h4>
+                                <p class="bed-type"><?php echo htmlspecialchars(ucfirst($bed['bed_type'])); ?></p>
+                            </div>
+                            
+                            <!-- Bed Details -->
+                            <div class="bed-details">
+                                <?php if ($bed['status'] === 'occupied' && $bed['patient_name']): ?>
+                                    <div class="detail-row mb-2">
+                                        <strong>Patient:</strong> <?php echo htmlspecialchars($bed['patient_name']); ?>
                                     </div>
-                                </div>
-                            <?php endforeach; ?>
-                        </div>
-                    </div>
-
-                    <!-- Available Beds -->
-                    <div class="tab-pane fade" id="available" role="tabpanel">
-                        <div class="row mt-3">
-                            <?php foreach ($beds as $bed): ?>
+                                    <div class="detail-row mb-2">
+                                        <strong>Patient ID:</strong> <?php echo htmlspecialchars($bed['patient_id']); ?>
+                                    </div>
+                                    <div class="detail-row mb-2">
+                                        <strong>Admitted:</strong> <?php echo date('M d, Y', strtotime($bed['assigned_date'])); ?>
+                                    </div>
+                                    <?php if ($bed['patient_phone']): ?>
+                                        <div class="detail-row mb-2">
+                                            <strong>Phone:</strong> <?php echo htmlspecialchars($bed['patient_phone']); ?>
+                                        </div>
+                                    <?php endif; ?>
+                                    <?php if ($bed['assignment_notes']): ?>
+                                        <div class="detail-row mb-2">
+                                            <strong>Notes:</strong> <?php echo htmlspecialchars(substr($bed['assignment_notes'], 0, 50)); ?>
+                                            <?php if (strlen($bed['assignment_notes']) > 50): ?>...<?php endif; ?>
+                                        </div>
+                                    <?php endif; ?>
+                                <?php else: ?>
+                                    <div class="detail-row mb-2">
+                                        <strong>Daily Rate:</strong> ₹<?php echo number_format($bed['daily_rate'] ?? 0, 2); ?>
+                                    </div>
+                                    <div class="detail-row mb-2">
+                                        <strong>Last Updated:</strong> <?php echo $bed['last_updated'] ? date('M d, Y', strtotime($bed['last_updated'])) : 'N/A'; ?>
+                                    </div>
+                                <?php endif; ?>
+                            </div>
+                            
+                            <!-- Action Buttons -->
+                            <div class="bed-actions">
                                 <?php if ($bed['status'] === 'available'): ?>
-                                    <div class="col-md-6 col-lg-4 mb-3">
-                                        <div class="card bed-card status-available">
-                                            <div class="card-body">
-                                                <h5 class="card-title">
-                                                    Ward <?php echo htmlspecialchars($bed['ward_number']); ?> - Bed <?php echo htmlspecialchars($bed['bed_number']); ?>
-                                                </h5>
-                                                <p class="card-text">
-                                                    <strong>Type:</strong> <?php echo htmlspecialchars($bed['bed_type']); ?><br>
-                                                    <strong>Status:</strong> <span class="badge bg-success">Available</span>
-                                                </p>
-                                                <button class="btn btn-primary" onclick="assignPatient(<?php echo $bed['id']; ?>)">
-                                                    <i class="fas fa-user-plus"></i> Assign Patient
-                                                </button>
-                                            </div>
-                                        </div>
-                                    </div>
+                                    <button class="btn btn-success btn-sm" onclick="showAssignModal(<?php echo $bed['id']; ?>, '<?php echo htmlspecialchars($bed['bed_number']); ?>')">
+                                        <i class="fas fa-user-plus"></i> Assign Patient
+                                    </button>
+                                <?php elseif ($bed['status'] === 'occupied'): ?>
+                                    <button class="btn btn-warning btn-sm" onclick="showDischargeModal(<?php echo $bed['assignment_id']; ?>, '<?php echo htmlspecialchars($bed['patient_name']); ?>')">
+                                        <i class="fas fa-sign-out-alt"></i> Discharge
+                                    </button>
+                                <?php elseif ($bed['status'] === 'maintenance'): ?>
+                                    <form method="POST" style="display: inline;">
+                                        <input type="hidden" name="action" value="update_bed_status">
+                                        <input type="hidden" name="bed_id" value="<?php echo $bed['id']; ?>">
+                                        <input type="hidden" name="new_status" value="available">
+                                        <button type="submit" class="btn btn-success btn-sm">
+                                            <i class="fas fa-check"></i> Mark Available
+                                        </button>
+                                    </form>
                                 <?php endif; ?>
-                            <?php endforeach; ?>
+                            </div>
                         </div>
-                    </div>
-
-                    <!-- Occupied Beds -->
-                    <div class="tab-pane fade" id="occupied" role="tabpanel">
-                        <div class="row mt-3">
-                            <?php foreach ($beds as $bed): ?>
-                                <?php if ($bed['status'] === 'occupied'): ?>
-                                    <div class="col-md-6 col-lg-4 mb-3">
-                                        <div class="card bed-card status-occupied">
-                                            <div class="card-body">
-                                                <h5 class="card-title">
-                                                    Ward <?php echo htmlspecialchars($bed['ward_number']); ?> - Bed <?php echo htmlspecialchars($bed['bed_number']); ?>
-                                                </h5>
-                                                <p class="card-text">
-                                                    <strong>Type:</strong> <?php echo htmlspecialchars($bed['bed_type']); ?><br>
-                                                    <strong>Status:</strong> <span class="badge bg-danger">Occupied</span><br>
-                                                    <strong>Patient:</strong> <?php echo htmlspecialchars($bed['patient_name']); ?><br>
-                                                    <strong>Phone:</strong> <?php echo htmlspecialchars($bed['patient_phone']); ?><br>
-                                                    <strong>Admitted:</strong> <?php echo date('M d, Y', strtotime($bed['admission_date'])); ?><br>
-                                                    <strong>Expected Discharge:</strong> <?php echo date('M d, Y', strtotime($bed['expected_discharge'])); ?>
-                                                </p>
-                                                <button class="btn btn-success" onclick="dischargePatient(<?php echo $bed['id']; ?>)">
-                                                    <i class="fas fa-user-minus"></i> Discharge Patient
-                                                </button>
-                                            </div>
-                                        </div>
-                                    </div>
-                                <?php endif; ?>
-                            <?php endforeach; ?>
-                        </div>
-                    </div>
-                </div>
-            </main>
-        </div>
+                    <?php endforeach; ?>
+                <?php endif; ?>
+            </div>
+        </main>
     </div>
 
     <!-- Add Bed Modal -->
-    <div class="modal fade" id="addBedModal" tabindex="-1">
+    <div class="modal" id="addBedModal">
         <div class="modal-dialog">
             <div class="modal-content">
                 <div class="modal-header">
                     <h5 class="modal-title">Add New Bed</h5>
-                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                    <button type="button" class="btn-close" onclick="closeModal('addBedModal')">&times;</button>
                 </div>
                 <form method="POST">
                     <div class="modal-body">
                         <input type="hidden" name="action" value="add_bed">
                         
-                        <div class="mb-3">
-                            <label for="ward_number" class="form-label">Ward Number</label>
-                            <input type="number" class="form-control" id="ward_number" name="ward_number" required>
+                        <div class="form-group">
+                            <label for="bed_number">Bed Number</label>
+                            <input type="text" name="bed_number" id="bed_number" class="form-control" required>
                         </div>
                         
-                        <div class="mb-3">
-                            <label for="bed_number" class="form-label">Bed Number</label>
-                            <input type="number" class="form-control" id="bed_number" name="bed_number" required>
-                        </div>
-                        
-                        <div class="mb-3">
-                            <label for="bed_type" class="form-label">Bed Type</label>
-                            <select class="form-control" id="bed_type" name="bed_type" required>
-                                <option value="">Select Bed Type</option>
-                                <option value="General">General</option>
-                                <option value="Semi-Private">Semi-Private</option>
-                                <option value="Private">Private</option>
-                                <option value="ICU">ICU</option>
-                                <option value="Emergency">Emergency</option>
+                        <div class="form-group">
+                            <label for="bed_type">Bed Type</label>
+                            <select name="bed_type" id="bed_type" class="form-control" required>
+                                <option value="">Select Type</option>
+                                <option value="general">General</option>
+                                <option value="icu">ICU</option>
+                                <option value="private">Private</option>
+                                <option value="emergency">Emergency</option>
+                                <option value="pediatric">Pediatric</option>
                             </select>
+                        </div>
+                        
+                        <div class="form-group">
+                            <label for="daily_rate">Daily Rate (₹)</label>
+                            <input type="number" name="daily_rate" id="daily_rate" class="form-control" step="0.01" value="0">
                         </div>
                     </div>
                     <div class="modal-footer">
-                        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                        <button type="button" class="btn btn-secondary" onclick="closeModal('addBedModal')">Cancel</button>
                         <button type="submit" class="btn btn-primary">Add Bed</button>
                     </div>
                 </form>
@@ -368,119 +445,163 @@ $available_patients = $stmt->fetchAll(PDO::FETCH_ASSOC);
     </div>
 
     <!-- Assign Patient Modal -->
-    <div class="modal fade" id="assignPatientModal" tabindex="-1">
+    <div class="modal" id="assignModal">
         <div class="modal-dialog">
             <div class="modal-content">
                 <div class="modal-header">
                     <h5 class="modal-title">Assign Patient to Bed</h5>
-                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                    <button type="button" class="btn-close" onclick="closeModal('assignModal')">&times;</button>
                 </div>
                 <form method="POST">
                     <div class="modal-body">
                         <input type="hidden" name="action" value="assign_patient">
                         <input type="hidden" name="bed_id" id="assign_bed_id">
                         
-                        <div class="mb-3">
-                            <label for="patient_id" class="form-label">Select Patient</label>
-                            <select class="form-control" id="patient_id" name="patient_id" required>
+                        <div class="form-group">
+                            <label>Bed: <strong id="assign_bed_info"></strong></label>
+                        </div>
+                        
+                        <div class="form-group">
+                            <label for="patient_id">Patient</label>
+                            <select name="patient_id" id="patient_id" class="form-control" required>
                                 <option value="">Select Patient</option>
                                 <?php foreach ($available_patients as $patient): ?>
                                     <option value="<?php echo $patient['id']; ?>">
-                                        <?php echo htmlspecialchars($patient['name']); ?> (<?php echo htmlspecialchars($patient['phone']); ?>)
+                                        <?php echo htmlspecialchars($patient['full_name'] . ' (' . $patient['patient_id'] . ') - ' . $patient['phone']); ?>
                                     </option>
                                 <?php endforeach; ?>
                             </select>
                         </div>
                         
-                        <div class="mb-3">
-                            <label for="admission_date" class="form-label">Admission Date</label>
-                            <input type="date" class="form-control" id="admission_date" name="admission_date" required>
+                        <div class="form-group">
+                            <label for="admission_date">Admission Date</label>
+                            <input type="date" name="admission_date" id="admission_date" class="form-control" value="<?php echo date('Y-m-d'); ?>">
                         </div>
                         
-                        <div class="mb-3">
-                            <label for="expected_discharge" class="form-label">Expected Discharge Date</label>
-                            <input type="date" class="form-control" id="expected_discharge" name="expected_discharge" required>
-                        </div>
-                        
-                        <div class="mb-3">
-                            <label for="notes" class="form-label">Notes</label>
-                            <textarea class="form-control" id="notes" name="notes" rows="3"></textarea>
+                        <div class="form-group">
+                            <label for="notes">Notes</label>
+                            <textarea name="notes" id="notes" class="form-control" rows="3" placeholder="Admission notes or special requirements..."></textarea>
                         </div>
                     </div>
                     <div class="modal-footer">
-                        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
-                        <button type="submit" class="btn btn-primary">Assign Patient</button>
+                        <button type="button" class="btn btn-secondary" onclick="closeModal('assignModal')">Cancel</button>
+                        <button type="submit" class="btn btn-success">Assign Patient</button>
                     </div>
                 </form>
             </div>
         </div>
     </div>
 
-    <!-- Update Status Modal -->
-    <div class="modal fade" id="updateStatusModal" tabindex="-1">
+    <!-- Discharge Modal -->
+    <div class="modal" id="dischargeModal">
         <div class="modal-dialog">
             <div class="modal-content">
                 <div class="modal-header">
-                    <h5 class="modal-title">Update Bed Status</h5>
-                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                    <h5 class="modal-title">Discharge Patient</h5>
+                    <button type="button" class="btn-close" onclick="closeModal('dischargeModal')">&times;</button>
                 </div>
                 <form method="POST">
                     <div class="modal-body">
-                        <input type="hidden" name="action" value="update_status">
-                        <input type="hidden" name="bed_id" id="update_bed_id">
+                        <input type="hidden" name="action" value="discharge_patient">
+                        <input type="hidden" name="assignment_id" id="discharge_assignment_id">
                         
-                        <div class="mb-3">
-                            <label for="status" class="form-label">Bed Status</label>
-                            <select class="form-control" id="status" name="status" required>
-                                <option value="available">Available</option>
-                                <option value="occupied">Occupied</option>
-                                <option value="maintenance">Maintenance</option>
-                            </select>
+                        <div class="form-group">
+                            <label>Patient: <strong id="discharge_patient_name"></strong></label>
+                        </div>
+                        
+                        <div class="alert alert-info">
+                            <i class="fas fa-info-circle"></i>
+                            Patient will be discharged and bed will be marked for maintenance.
                         </div>
                     </div>
                     <div class="modal-footer">
-                        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
-                        <button type="submit" class="btn btn-primary">Update Status</button>
+                        <button type="button" class="btn btn-secondary" onclick="closeModal('dischargeModal')">Cancel</button>
+                        <button type="submit" class="btn btn-warning">Discharge Patient</button>
                     </div>
                 </form>
             </div>
         </div>
     </div>
 
-    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.bundle.min.js"></script>
     <script>
-        function assignPatient(bedId) {
-            document.getElementById('assign_bed_id').value = bedId;
-            new bootstrap.Modal(document.getElementById('assignPatientModal')).show();
+        // Modal functions
+        function showAddBedModal() {
+            document.getElementById('addBedModal').classList.add('show');
         }
         
-        function dischargePatient(bedId) {
-            if (confirm('Are you sure you want to discharge this patient?')) {
-                const form = document.createElement('form');
-                form.method = 'POST';
-                form.innerHTML = `
-                    <input type="hidden" name="action" value="discharge_patient">
-                    <input type="hidden" name="bed_id" value="${bedId}">
-                `;
-                document.body.appendChild(form);
-                form.submit();
+        function showAssignModal(bedId, bedNumber) {
+            document.getElementById('assign_bed_id').value = bedId;
+            document.getElementById('assign_bed_info').textContent = 'Bed ' + bedNumber;
+            document.getElementById('assignModal').classList.add('show');
+        }
+        
+        function showDischargeModal(assignmentId, patientName) {
+            document.getElementById('discharge_assignment_id').value = assignmentId;
+            document.getElementById('discharge_patient_name').textContent = patientName;
+            document.getElementById('dischargeModal').classList.add('show');
+        }
+        
+        function closeModal(modalId) {
+            document.getElementById(modalId).classList.remove('show');
+        }
+        
+        // Theme controls (same as other pages)
+        const themeToggle = document.getElementById('themeToggle');
+        const colorToggle = document.getElementById('colorToggle');
+        const html = document.documentElement;
+        
+        const themes = ['light', 'dark', 'medical'];
+        let currentThemeIndex = 0;
+        
+        const savedTheme = localStorage.getItem('theme') || 'light';
+        currentThemeIndex = themes.indexOf(savedTheme);
+        if (currentThemeIndex === -1) currentThemeIndex = 0;
+        
+        html.setAttribute('data-theme', savedTheme);
+        updateThemeIcon(savedTheme);
+        
+        themeToggle.addEventListener('click', () => {
+            currentThemeIndex = (currentThemeIndex + 1) % themes.length;
+            const newTheme = themes[currentThemeIndex];
+            html.setAttribute('data-theme', newTheme);
+            localStorage.setItem('theme', newTheme);
+            updateThemeIcon(newTheme);
+        });
+        
+        colorToggle.addEventListener('click', () => {
+            const currentTheme = html.getAttribute('data-theme');
+            const newTheme = currentTheme === 'medical' ? 'light' : 'medical';
+            html.setAttribute('data-theme', newTheme);
+            localStorage.setItem('theme', newTheme);
+            updateThemeIcon(newTheme);
+            currentThemeIndex = themes.indexOf(newTheme);
+        });
+        
+        function updateThemeIcon(theme) {
+            const themeIcon = themeToggle.querySelector('i');
+            const colorIcon = colorToggle.querySelector('i');
+            
+            switch(theme) {
+                case 'light':
+                    themeIcon.className = 'fas fa-sun';
+                    colorIcon.className = 'fas fa-palette';
+                    break;
+                case 'dark':
+                    themeIcon.className = 'fas fa-moon';
+                    colorIcon.className = 'fas fa-palette';
+                    break;
+                case 'medical':
+                    themeIcon.className = 'fas fa-sun';
+                    colorIcon.className = 'fas fa-heart';
+                    break;
             }
         }
         
-        function updateStatus(bedId, currentStatus) {
-            document.getElementById('update_bed_id').value = bedId;
-            document.getElementById('status').value = currentStatus;
-            new bootstrap.Modal(document.getElementById('updateStatusModal')).show();
-        }
-        
-        // Set default dates
-        document.addEventListener('DOMContentLoaded', function() {
-            const today = new Date().toISOString().split('T')[0];
-            document.getElementById('admission_date').value = today;
-            
-            const nextWeek = new Date();
-            nextWeek.setDate(nextWeek.getDate() + 7);
-            document.getElementById('expected_discharge').value = nextWeek.toISOString().split('T')[0];
+        // Close modal when clicking outside
+        document.addEventListener('click', (e) => {
+            if (e.target.classList.contains('modal')) {
+                e.target.classList.remove('show');
+            }
         });
     </script>
 </body>

@@ -99,12 +99,11 @@ $sql = "SELECT lo.*,
         CONCAT(p.first_name, ' ', p.last_name) as patient_name,
         p.patient_id as patient_number,
         CONCAT(d.first_name, ' ', d.last_name) as doctor_name,
-        COUNT(lot.id) as total_tests,
-        SUM(CASE WHEN lot.status = 'completed' THEN 1 ELSE 0 END) as completed_tests
+        0 as total_tests,
+        0 as completed_tests
         FROM lab_orders lo
         LEFT JOIN patients p ON lo.patient_id = p.id
         LEFT JOIN doctors d ON lo.doctor_id = d.id
-        LEFT JOIN lab_order_tests lot ON lo.id = lot.order_id
         WHERE 1=1";
 
 $params = [];
@@ -125,7 +124,7 @@ if ($date_filter) {
     $params[] = $date_filter;
 }
 
-$sql .= " GROUP BY lo.id ORDER BY lo.created_at DESC";
+$sql .= " ORDER BY lo.created_at DESC";
 
 $lab_orders = $db->query($sql, $params)->fetchAll();
 
@@ -145,7 +144,7 @@ try {
     $stats['pending_orders'] = $db->query("SELECT COUNT(*) as count FROM lab_orders WHERE status = 'pending'")->fetch()['count'];
     $stats['completed_orders'] = $db->query("SELECT COUNT(*) as count FROM lab_orders WHERE status = 'completed'")->fetch()['count'];
     $stats['today_orders'] = $db->query("SELECT COUNT(*) as count FROM lab_orders WHERE DATE(order_date) = CURDATE()")->fetch()['count'];
-    $stats['abnormal_results'] = $db->query("SELECT COUNT(*) as count FROM lab_order_tests WHERE is_abnormal = 1 AND DATE(completed_at) = CURDATE()")->fetch()['count'];
+    $stats['abnormal_results'] = 0; // Will be implemented when lab_order_tests table is created
 } catch (Exception $e) {
     $stats = ['total_orders' => 0, 'pending_orders' => 0, 'completed_orders' => 0, 'today_orders' => 0, 'abnormal_results' => 0];
 }
