@@ -148,6 +148,7 @@ try {
                 <?php endif; ?>
                 
                 <?php if (in_array($user_role, ['admin'])): ?>
+                    <li><a href="user-management.php"><i class="fas fa-users-cog"></i> User Management</a></li>
                     <li><a href="equipment.php"><i class="fas fa-tools"></i> Equipment</a></li>
                     <li><a href="staff.php"><i class="fas fa-user-nurse"></i> Staff</a></li>
                     <li><a href="attendance.php"><i class="fas fa-clock"></i> Attendance</a></li>
