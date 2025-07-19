@@ -44,7 +44,7 @@ try {
     $overview_stats['cancelled_appointments'] = $db->query("SELECT COUNT(*) as count FROM appointments WHERE hospital_id = 1 AND status = 'cancelled' AND DATE(appointment_date) BETWEEN ? AND ?", [$date_from, $date_to])->fetch()['count'];
     
     // Revenue Statistics
-    $revenue_data = $db->query("SELECT SUM(total_amount) as total_revenue, COUNT(*) as total_bills FROM bills WHERE hospital_id = 1 AND status = 'paid' AND DATE(created_at) BETWEEN ? AND ?", [$date_from, $date_to])->fetch();
+    $revenue_data = $db->query("SELECT SUM(total_amount) as total_revenue, COUNT(*) as total_bills FROM bills WHERE hospital_id = 1 AND payment_status = 'paid' AND DATE(created_at) BETWEEN ? AND ?", [$date_from, $date_to])->fetch();
     $overview_stats['total_revenue'] = $revenue_data['total_revenue'] ?? 0;
     $overview_stats['total_bills'] = $revenue_data['total_bills'] ?? 0;
     
@@ -57,7 +57,7 @@ try {
     
     // Staff & Resource Statistics
     $overview_stats['total_doctors'] = $db->query("SELECT COUNT(*) as count FROM doctors WHERE hospital_id = 1 AND is_available = 1")->fetch()['count'];
-    $overview_stats['total_staff'] = $db->query("SELECT COUNT(*) as count FROM staff WHERE hospital_id = 1 AND status = 'active'")->fetch()['count'];
+    $overview_stats['total_staff'] = $db->query("SELECT COUNT(*) as count FROM staff WHERE hospital_id = 1 AND is_active = 1")->fetch()['count'];
     $overview_stats['occupied_beds'] = $db->query("SELECT COUNT(*) as count FROM beds WHERE hospital_id = 1 AND status = 'occupied'")->fetch()['count'];
     $overview_stats['available_beds'] = $db->query("SELECT COUNT(*) as count FROM beds WHERE hospital_id = 1 AND status = 'available'")->fetch()['count'];
     
@@ -65,7 +65,7 @@ try {
     $daily_revenue = $db->query("
         SELECT DATE(created_at) as date, SUM(total_amount) as revenue 
         FROM bills 
-        WHERE hospital_id = 1 AND status = 'paid' AND DATE(created_at) >= DATE_SUB(CURDATE(), INTERVAL 30 DAY)
+        WHERE hospital_id = 1 AND payment_status = 'paid' AND DATE(created_at) >= DATE_SUB(CURDATE(), INTERVAL 30 DAY)
         GROUP BY DATE(created_at) 
         ORDER BY date ASC
     ")->fetchAll();
@@ -97,10 +97,9 @@ try {
         d.specialization,
         COUNT(a.id) as appointment_count,
         SUM(CASE WHEN a.status = 'completed' THEN 1 ELSE 0 END) as completed_count,
-        AVG(CASE WHEN r.rating IS NOT NULL THEN r.rating ELSE NULL END) as avg_rating
+        0 as avg_rating
         FROM doctors d
         LEFT JOIN appointments a ON d.id = a.doctor_id AND DATE(a.appointment_date) BETWEEN ? AND ?
-        LEFT JOIN ratings r ON d.id = r.doctor_id
         WHERE d.hospital_id = 1 AND d.is_available = 1
         GROUP BY d.id
         HAVING appointment_count > 0
@@ -112,7 +111,7 @@ try {
     $payment_methods = $db->query("
         SELECT payment_method, COUNT(*) as count, SUM(total_amount) as total
         FROM bills 
-        WHERE hospital_id = 1 AND status = 'paid' AND DATE(created_at) BETWEEN ? AND ?
+        WHERE hospital_id = 1 AND payment_status = 'paid' AND DATE(created_at) BETWEEN ? AND ?
         GROUP BY payment_method
         ORDER BY total DESC
     ", [$date_from, $date_to])->fetchAll();
@@ -160,7 +159,7 @@ try {
         
         SELECT 'Bill' as type, CONCAT('Payment received: ₹', FORMAT(b.total_amount, 2)) as description, b.updated_at as date
         FROM bills b 
-        WHERE b.hospital_id = 1 AND b.status = 'paid' AND b.updated_at >= DATE_SUB(NOW(), INTERVAL 7 DAY)
+        WHERE b.hospital_id = 1 AND b.payment_status = 'paid' AND b.updated_at >= DATE_SUB(NOW(), INTERVAL 7 DAY)
         
         ORDER BY date DESC
         LIMIT 15
