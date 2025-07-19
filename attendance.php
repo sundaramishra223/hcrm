@@ -110,10 +110,9 @@ $staff_members = [];
 try {
     $staff_members = $db->query(
         "SELECT s.*, CONCAT(s.first_name, ' ', s.last_name) as full_name,
-                d.name as department_name, r.role_display_name
+                d.name as department_name, s.staff_type as role_display_name
          FROM staff s 
          LEFT JOIN departments d ON s.department_id = d.id
-         LEFT JOIN roles r ON s.role_id = r.id
          WHERE s.is_active = 1 
          ORDER BY s.first_name, s.last_name"
     )->fetchAll();

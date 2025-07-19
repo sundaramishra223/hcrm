@@ -609,55 +609,86 @@ try {
     </button>
 
     <script>
-        // Theme and color controls
+        // Enhanced Theme and Color Controls
         const themeToggle = document.getElementById('themeToggle');
         const colorToggle = document.getElementById('colorToggle');
         const html = document.documentElement;
         const themeIcon = themeToggle.querySelector('i');
         const colorIcon = colorToggle.querySelector('i');
 
+        // Available themes
+        const themes = ['light', 'dark', 'medical'];
+        let currentThemeIndex = 0;
+
         // Load saved theme
         const savedTheme = localStorage.getItem('theme') || 'light';
+        currentThemeIndex = themes.indexOf(savedTheme);
+        if (currentThemeIndex === -1) currentThemeIndex = 0;
+        
         html.setAttribute('data-theme', savedTheme);
         updateThemeIcon(savedTheme);
 
+        // Theme toggle (cycles through themes)
         themeToggle.addEventListener('click', () => {
-            const currentTheme = html.getAttribute('data-theme');
-            let newTheme;
-            
-            if (currentTheme === 'light') {
-                newTheme = 'dark';
-            } else if (currentTheme === 'dark') {
-                newTheme = 'custom';
-            } else {
-                newTheme = 'light';
-            }
+            currentThemeIndex = (currentThemeIndex + 1) % themes.length;
+            const newTheme = themes[currentThemeIndex];
             
             html.setAttribute('data-theme', newTheme);
             localStorage.setItem('theme', newTheme);
             updateThemeIcon(newTheme);
+            
+            // Add visual feedback
+            themeToggle.style.transform = 'scale(0.9)';
+            setTimeout(() => {
+                themeToggle.style.transform = 'scale(1)';
+            }, 150);
         });
 
+        // Color toggle (cycles between light and medical themes)
         colorToggle.addEventListener('click', () => {
             const currentTheme = html.getAttribute('data-theme');
-            const newTheme = currentTheme === 'custom' ? 'light' : 'custom';
+            const newTheme = currentTheme === 'medical' ? 'light' : 'medical';
             
             html.setAttribute('data-theme', newTheme);
             localStorage.setItem('theme', newTheme);
             updateThemeIcon(newTheme);
+            
+            // Add color cycling animation
+            colorToggle.classList.add('active');
+            setTimeout(() => {
+                colorToggle.classList.remove('active');
+            }, 2000);
+            
+            // Update theme index
+            currentThemeIndex = themes.indexOf(newTheme);
         });
 
         function updateThemeIcon(theme) {
-            if (theme === 'light') {
-                themeIcon.className = 'fas fa-moon';
-                colorIcon.className = 'fas fa-palette';
-            } else if (theme === 'dark') {
-                themeIcon.className = 'fas fa-sun';
-                colorIcon.className = 'fas fa-palette';
-            } else if (theme === 'custom') {
-                themeIcon.className = 'fas fa-moon';
-                colorIcon.className = 'fas fa-check';
+            // Remove any existing animations
+            themeIcon.style.animation = '';
+            colorIcon.style.animation = '';
+            
+            switch(theme) {
+                case 'light':
+                    themeIcon.className = 'fas fa-sun';
+                    colorIcon.className = 'fas fa-palette';
+                    break;
+                case 'dark':
+                    themeIcon.className = 'fas fa-moon';
+                    colorIcon.className = 'fas fa-palette';
+                    break;
+                case 'medical':
+                    themeIcon.className = 'fas fa-sun';
+                    colorIcon.className = 'fas fa-heart';
+                    break;
+                default:
+                    themeIcon.className = 'fas fa-sun';
+                    colorIcon.className = 'fas fa-palette';
             }
+            
+            // Add subtle animation feedback
+            themeIcon.style.animation = 'fadeIn 0.3s ease-out';
+            colorIcon.style.animation = 'fadeIn 0.3s ease-out';
         }
 
         // Mobile Menu Toggle

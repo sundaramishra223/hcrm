@@ -199,5 +199,32 @@ if ($_POST) {
             </div>
         </div>
     </div>
+
+    <!-- Password Validation Script -->
+    <script src="includes/password-validation.js"></script>
+    <script>
+        // Theme support for login page
+        const savedTheme = localStorage.getItem('theme') || 'light';
+        document.documentElement.setAttribute('data-theme', savedTheme);
+        
+        // Demo credential fill
+        document.addEventListener('DOMContentLoaded', () => {
+            const demoUsers = document.querySelectorAll('.demo-users p');
+            demoUsers.forEach(user => {
+                user.addEventListener('click', () => {
+                    const text = user.textContent;
+                    const emailMatch = text.match(/(\S+@\S+\.\S+)/);
+                    const passwordMatch = text.match(/password/);
+                    
+                    if (emailMatch) {
+                        document.getElementById('email').value = emailMatch[1];
+                        if (passwordMatch) {
+                            document.getElementById('password').value = 'password';
+                        }
+                    }
+                });
+            });
+        });
+    </script>
 </body>
 </html>
