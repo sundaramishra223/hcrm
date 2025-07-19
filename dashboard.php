@@ -590,7 +590,7 @@ try {
                 responsive: true,
                 maintainAspectRatio: false,
                 interaction: {
-                    mode: 'index',
+                    mode: null,
                     intersect: false,
                 },
                 onClick: (e) => {
@@ -599,9 +599,15 @@ try {
                     return false;
                 },
                 onHover: (e) => {
-                    // Keep hover behavior but prevent click
+                    // Disable hover behavior completely
                     e.native.target.style.cursor = 'default';
+                    return false;
                 },
+                plugins: {
+                    tooltip: {
+                        enabled: false
+                    }
+                }
                 scales: {
                     x: {
                         display: true,

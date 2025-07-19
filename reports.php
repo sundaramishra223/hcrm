@@ -806,16 +806,24 @@ try {
             options: {
                 responsive: true,
                 maintainAspectRatio: false,
+                interaction: {
+                    mode: null,
+                    intersect: false,
+                },
                 onClick: (e) => {
                     // Disable chart click behavior
                     e.stopPropagation();
                     return false;
                 },
                 onHover: (e) => {
-                    // Keep hover behavior but prevent click
+                    // Disable hover behavior completely
                     e.native.target.style.cursor = 'default';
+                    return false;
                 },
                 plugins: {
+                    tooltip: {
+                        enabled: false
+                    },
                     legend: {
                         display: false
                     }
@@ -855,16 +863,24 @@ try {
             options: {
                 responsive: true,
                 maintainAspectRatio: false,
+                interaction: {
+                    mode: null,
+                    intersect: false,
+                },
                 onClick: (e) => {
                     // Disable chart click behavior
                     e.stopPropagation();
                     return false;
                 },
                 onHover: (e) => {
-                    // Keep hover behavior but prevent click
+                    // Disable hover behavior completely
                     e.native.target.style.cursor = 'default';
+                    return false;
                 },
                 plugins: {
+                    tooltip: {
+                        enabled: false
+                    },
                     legend: {
                         display: false
                     }
