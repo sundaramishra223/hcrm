@@ -38,8 +38,8 @@ $sql = "SELECT p.*,
         b.bed_number,
         b.bed_type,
         COALESCE(b.daily_rate, 0) as daily_rate,
-        'General Ward' as room_name,
-        'General' as department_name,
+        COALESCE(b.room_number, 'General Ward') as room_name,
+        COALESCE(dept.name, 'General') as department_name,
         (SELECT COUNT(*) FROM appointments WHERE patient_id = p.id AND appointment_date >= CURDATE()) as upcoming_appointments,
         (SELECT COUNT(*) FROM prescriptions WHERE patient_id = p.id AND status = 'active') as active_prescriptions,
         (SELECT COUNT(*) FROM lab_orders WHERE patient_id = p.id AND status IN ('pending', 'in_progress')) as pending_lab_tests,
@@ -49,6 +49,7 @@ $sql = "SELECT p.*,
         LEFT JOIN doctors d ON p.assigned_doctor_id = d.id
         LEFT JOIN bed_assignments ba ON p.id = ba.patient_id AND ba.status = 'active'
         LEFT JOIN beds b ON ba.bed_id = b.id
+        LEFT JOIN departments dept ON b.department_id = dept.id
         WHERE 1=1";
 
 $params = [];
@@ -59,11 +60,10 @@ if ($type_filter !== 'all') {
     $params[] = $type_filter;
 }
 
-// Department filter disabled - departments table not available
-// if ($department_filter !== 'all') {
-//     $sql .= " AND dept.id = ?";
-//     $params[] = $department_filter;
-// }
+if ($department_filter !== 'all') {
+    $sql .= " AND dept.id = ?";
+    $params[] = $department_filter;
+}
 
 if ($search) {
     $sql .= " AND (p.first_name LIKE ? OR p.last_name LIKE ? OR p.patient_id LIKE ? OR p.phone LIKE ?)";
@@ -107,14 +107,13 @@ try {
     $stats = ['total_patients' => 0, 'inpatients' => 0, 'outpatients' => 0, 'critical_patients' => 0, 'admitted_today' => 0, 'discharged_today' => 0];
 }
 
-// Get departments for filter (placeholder until departments table is created)
-$departments = [
-    ['id' => 1, 'name' => 'General'],
-    ['id' => 2, 'name' => 'Emergency'],
-    ['id' => 3, 'name' => 'ICU'],
-    ['id' => 4, 'name' => 'Pediatrics'],
-    ['id' => 5, 'name' => 'Cardiology']
-];
+// Get departments for filter
+$departments = [];
+try {
+    $departments = $db->query("SELECT * FROM departments ORDER BY name")->fetchAll();
+} catch (Exception $e) {
+    $departments = [];
+}
 ?>
 <!DOCTYPE html>
 <html lang="en">
