@@ -79,7 +79,7 @@ if ($_POST && isset($_POST['action']) && $_POST['action'] === 'discharge_bed') {
 // Handle equipment addition
 if ($_POST && isset($_POST['action']) && $_POST['action'] === 'add_equipment') {
     try {
-        $equipment_sql = "INSERT INTO equipment (hospital_id, name, category, model, serial_number, manufacturer, purchase_date, warranty_expiry, cost, location, status, maintenance_schedule, specifications, notes) VALUES (1, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'operational', ?, ?, ?)";
+        $equipment_sql = "INSERT INTO equipment (name, category, model, serial_number, manufacturer, purchase_date, warranty_expiry, cost, location, status, maintenance_schedule, specifications, notes) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'operational', ?, ?, ?)";
         
         $db->query($equipment_sql, [
             $_POST['name'],
@@ -140,7 +140,7 @@ $beds = $db->query("
     LEFT JOIN patients p ON ba.patient_id = p.id
     LEFT JOIN rooms r ON b.room_id = r.id
     LEFT JOIN departments d ON r.department_id = d.id
-    WHERE b.hospital_id = 1
+    ";
     ORDER BY d.name, r.name, b.bed_number
 ")->fetchAll();
 
@@ -152,7 +152,7 @@ $equipment_sql = "SELECT e.*,
                   (SELECT COUNT(*) FROM equipment_maintenance WHERE equipment_id = e.id) as maintenance_count,
                   (SELECT maintenance_date FROM equipment_maintenance WHERE equipment_id = e.id ORDER BY maintenance_date DESC LIMIT 1) as last_maintenance_date
                   FROM equipment e
-                  WHERE e.hospital_id = 1";
+                  ";
 
 $equipment_params = [];
 
@@ -176,12 +176,12 @@ $patients = $db->query("
     SELECT p.id, p.patient_id, CONCAT(p.first_name, ' ', p.last_name) as full_name, p.phone
     FROM patients p
     LEFT JOIN bed_assignments ba ON p.id = ba.patient_id AND ba.status = 'active'
-    WHERE p.hospital_id = 1 AND ba.id IS NULL
+    WHERE ba.id IS NULL
     ORDER BY p.first_name, p.last_name
 ")->fetchAll();
 
 // Get equipment categories
-$equipment_categories = $db->query("SELECT DISTINCT category FROM equipment WHERE hospital_id = 1 ORDER BY category")->fetchAll();
+$equipment_categories = $db->query("SELECT DISTINCT category FROM equipment ORDER BY category")->fetchAll();
 
 // Get statistics
 $stats = [];
