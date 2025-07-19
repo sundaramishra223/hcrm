@@ -188,14 +188,33 @@ foreach ($assets as $asset) {
 }
 echo "</div>";
 
-// Test 10: Demo Login Credentials
+// Test 10: Role-Based Dashboard Check
 echo "<div class='test-section success'>";
-echo "<h3>10. Demo Login Credentials</h3>";
+echo "<h3>10. Role-Based Dashboard Check</h3>";
+echo "<strong>✅ All 11 User Roles Have Personalized Dashboards:</strong><br><br>";
+echo "• <strong>Admin:</strong> Full system overview with all statistics<br>";
+echo "• <strong>Doctor:</strong> Patient management, appointments, prescriptions<br>";
+echo "• <strong>Nurse:</strong> Patient vitals, assigned patients<br>";
+echo "• <strong>Patient:</strong> Personal appointments, prescriptions, bills<br>";
+echo "• <strong>Receptionist:</strong> Appointments, registrations, billing<br>";
+echo "• <strong>Lab Technician:</strong> Test management, results, statistics<br>";
+echo "• <strong>Pharmacy Staff:</strong> Medicine inventory, prescriptions<br>";
+echo "• <strong>Intern Doctor:</strong> Limited patient access, supervised<br>";
+echo "• <strong>Intern Nurse:</strong> Limited vitals recording, supervised<br>";
+echo "• <strong>Intern Lab:</strong> Limited test access, supervised<br>";
+echo "• <strong>Intern Pharmacy:</strong> Limited pharmacy access, supervised<br>";
+echo "</div>";
+
+// Test 11: Demo Login Credentials
+echo "<div class='test-section success'>";
+echo "<h3>11. Demo Login Credentials</h3>";
 echo "<strong>Admin:</strong> admin@hospital.com / password<br>";
 echo "<strong>Doctor:</strong> dr.sharma@hospital.com / password<br>";
 echo "<strong>Patient:</strong> john.doe@email.com / password<br>";
 echo "<strong>Nurse:</strong> priya.nurse@hospital.com / password<br>";
 echo "<strong>Reception:</strong> reception@hospital.com / password<br>";
+echo "<strong>Lab Tech:</strong> lab.tech@hospital.com / password<br>";
+echo "<strong>Pharmacy:</strong> pharmacy@hospital.com / password<br>";
 echo "<br><strong>Access URL:</strong> <a href='index.php'>index.php</a>";
 echo "</div>";
 

@@ -44,8 +44,8 @@ define('DB_NAME', 'hospital_crm');
 - [ ] CSS and assets loading
 
 ### ✅ Core Features
-- [ ] Multi-role login system
-- [ ] Dashboard with statistics
+- [ ] Multi-role login system (11 roles)
+- [ ] Role-based personalized dashboards
 - [ ] Patient management
 - [ ] Doctor management
 - [ ] Appointment booking

@@ -37,6 +37,39 @@ try {
         $stats['my_prescriptions'] = $db->query("SELECT COUNT(*) as count FROM prescriptions WHERE patient_id = ?", [$patient_id])->fetch()['count'];
         $stats['my_bills'] = $db->query("SELECT COUNT(*) as count FROM bills WHERE patient_id = ?", [$patient_id])->fetch()['count'];
         $stats['pending_bills'] = $db->query("SELECT COUNT(*) as count FROM bills WHERE patient_id = ? AND payment_status != 'paid'", [$patient_id])->fetch()['count'];
+    } elseif ($user_role === 'receptionist') {
+        $stats['today_appointments'] = $db->query("SELECT COUNT(*) as count FROM appointments WHERE hospital_id = 1 AND appointment_date = CURDATE()")->fetch()['count'];
+        $stats['pending_appointments'] = $db->query("SELECT COUNT(*) as count FROM appointments WHERE hospital_id = 1 AND status = 'scheduled'")->fetch()['count'];
+        $stats['today_registrations'] = $db->query("SELECT COUNT(*) as count FROM patients WHERE hospital_id = 1 AND DATE(created_at) = CURDATE()")->fetch()['count'];
+        $stats['pending_bills'] = $db->query("SELECT COUNT(*) as count FROM bills WHERE hospital_id = 1 AND payment_status != 'paid'")->fetch()['count'];
+    } elseif ($user_role === 'lab_technician') {
+        $stats['pending_tests'] = $db->query("SELECT COUNT(*) as count FROM lab_order_tests WHERE status IN ('pending', 'in_progress')")->fetch()['count'];
+        $stats['completed_tests'] = $db->query("SELECT COUNT(*) as count FROM lab_order_tests WHERE status = 'completed' AND DATE(completed_at) = CURDATE()")->fetch()['count'];
+        $stats['total_tests'] = $db->query("SELECT COUNT(*) as count FROM lab_order_tests")->fetch()['count'];
+        $stats['abnormal_results'] = $db->query("SELECT COUNT(*) as count FROM lab_order_tests WHERE is_abnormal = 1 AND DATE(completed_at) = CURDATE()")->fetch()['count'];
+    } elseif ($user_role === 'pharmacy_staff') {
+        $stats['total_medicines'] = $db->query("SELECT COUNT(*) as count FROM medicines WHERE hospital_id = 1")->fetch()['count'];
+        $stats['low_stock_medicines'] = $db->query("SELECT COUNT(*) as count FROM medicines WHERE hospital_id = 1 AND current_stock <= reorder_level")->fetch()['count'];
+        $stats['today_prescriptions'] = $db->query("SELECT COUNT(*) as count FROM prescriptions WHERE hospital_id = 1 AND DATE(created_at) = CURDATE()")->fetch()['count'];
+        $stats['pending_dispensing'] = $db->query("SELECT COUNT(*) as count FROM prescription_medicines WHERE dispensed_quantity < quantity")->fetch()['count'];
+    } elseif ($user_role === 'intern_doctor') {
+        $doctor_id = $db->query("SELECT id FROM doctors WHERE user_id = ?", [$_SESSION['user_id']])->fetch()['id'];
+        $stats['my_patients'] = $db->query("SELECT COUNT(*) as count FROM patients WHERE assigned_doctor_id = ?", [$doctor_id])->fetch()['count'];
+        $stats['today_appointments'] = $db->query("SELECT COUNT(*) as count FROM appointments WHERE doctor_id = ? AND appointment_date = CURDATE()", [$doctor_id])->fetch()['count'];
+        $stats['pending_appointments'] = $db->query("SELECT COUNT(*) as count FROM appointments WHERE doctor_id = ? AND status = 'scheduled'", [$doctor_id])->fetch()['count'];
+        $stats['total_prescriptions'] = $db->query("SELECT COUNT(*) as count FROM prescriptions WHERE doctor_id = ?", [$doctor_id])->fetch()['count'];
+    } elseif ($user_role === 'intern_nurse') {
+        $stats['assigned_patients'] = $db->query("SELECT COUNT(*) as count FROM patient_visits WHERE assigned_nurse_id = (SELECT id FROM staff WHERE user_id = ?) AND visit_date = CURDATE()", [$_SESSION['user_id']])->fetch()['count'];
+        $stats['today_vitals'] = $db->query("SELECT COUNT(*) as count FROM patient_vitals WHERE recorded_by = (SELECT id FROM staff WHERE user_id = ?) AND DATE(recorded_at) = CURDATE()", [$_SESSION['user_id']])->fetch()['count'];
+        $stats['total_vitals'] = $db->query("SELECT COUNT(*) as count FROM patient_vitals WHERE recorded_by = (SELECT id FROM staff WHERE user_id = ?)", [$_SESSION['user_id']])->fetch()['count'];
+    } elseif ($user_role === 'intern_lab') {
+        $stats['pending_tests'] = $db->query("SELECT COUNT(*) as count FROM lab_order_tests WHERE status IN ('pending', 'in_progress')")->fetch()['count'];
+        $stats['completed_tests'] = $db->query("SELECT COUNT(*) as count FROM lab_order_tests WHERE status = 'completed' AND DATE(completed_at) = CURDATE()")->fetch()['count'];
+        $stats['total_tests'] = $db->query("SELECT COUNT(*) as count FROM lab_order_tests")->fetch()['count'];
+    } elseif ($user_role === 'intern_pharmacy') {
+        $stats['total_medicines'] = $db->query("SELECT COUNT(*) as count FROM medicines WHERE hospital_id = 1")->fetch()['count'];
+        $stats['low_stock_medicines'] = $db->query("SELECT COUNT(*) as count FROM medicines WHERE hospital_id = 1 AND current_stock <= reorder_level")->fetch()['count'];
+        $stats['today_prescriptions'] = $db->query("SELECT COUNT(*) as count FROM prescriptions WHERE hospital_id = 1 AND DATE(created_at) = CURDATE()")->fetch()['count'];
     }
 } catch (Exception $e) {
     $stats = [];
@@ -80,16 +113,60 @@ try {
             </div>
             <ul class="sidebar-menu">
                 <li><a href="dashboard.php" class="active"><i class="fas fa-home"></i> Dashboard</a></li>
-                <li><a href="patients.php"><i class="fas fa-users"></i> Patients</a></li>
-                <li><a href="doctors.php"><i class="fas fa-user-md"></i> Doctors</a></li>
-                <li><a href="appointments.php"><i class="fas fa-calendar-alt"></i> Appointments</a></li>
-                <li><a href="billing.php"><i class="fas fa-money-bill-wave"></i> Billing</a></li>
-                <li><a href="pharmacy.php"><i class="fas fa-pills"></i> Pharmacy</a></li>
-                <li><a href="laboratory.php"><i class="fas fa-flask"></i> Laboratory</a></li>
-                <li><a href="equipment.php"><i class="fas fa-tools"></i> Equipment</a></li>
-                <li><a href="staff.php"><i class="fas fa-user-nurse"></i> Staff</a></li>
-                <li><a href="reports.php"><i class="fas fa-chart-bar"></i> Reports</a></li>
-                <li><a href="settings.php"><i class="fas fa-cog"></i> Settings</a></li>
+                
+                <?php if (in_array($user_role, ['admin', 'receptionist'])): ?>
+                    <li><a href="patients.php"><i class="fas fa-users"></i> Patients</a></li>
+                <?php endif; ?>
+                
+                <?php if (in_array($user_role, ['admin', 'doctor', 'intern_doctor'])): ?>
+                    <li><a href="doctors.php"><i class="fas fa-user-md"></i> Doctors</a></li>
+                <?php endif; ?>
+                
+                <?php if (in_array($user_role, ['admin', 'doctor', 'receptionist', 'intern_doctor'])): ?>
+                    <li><a href="appointments.php"><i class="fas fa-calendar-alt"></i> Appointments</a></li>
+                <?php endif; ?>
+                
+                <?php if (in_array($user_role, ['admin', 'receptionist', 'pharmacy_staff', 'intern_pharmacy'])): ?>
+                    <li><a href="billing.php"><i class="fas fa-money-bill-wave"></i> Billing</a></li>
+                <?php endif; ?>
+                
+                <?php if (in_array($user_role, ['admin', 'pharmacy_staff', 'intern_pharmacy'])): ?>
+                    <li><a href="pharmacy.php"><i class="fas fa-pills"></i> Pharmacy</a></li>
+                <?php endif; ?>
+                
+                <?php if (in_array($user_role, ['admin', 'lab_technician', 'intern_lab'])): ?>
+                    <li><a href="laboratory.php"><i class="fas fa-flask"></i> Laboratory</a></li>
+                    <li><a href="lab-technician.php"><i class="fas fa-microscope"></i> Lab Tests</a></li>
+                <?php endif; ?>
+                
+                <?php if (in_array($user_role, ['admin', 'nurse', 'intern_nurse'])): ?>
+                    <li><a href="patient-vitals.php"><i class="fas fa-heartbeat"></i> Patient Vitals</a></li>
+                <?php endif; ?>
+                
+                <?php if (in_array($user_role, ['admin', 'doctor', 'nurse', 'receptionist', 'intern_doctor', 'intern_nurse'])): ?>
+                    <li><a href="patient-conversion.php"><i class="fas fa-exchange-alt"></i> Patient Conversion</a></li>
+                <?php endif; ?>
+                
+                <?php if (in_array($user_role, ['admin'])): ?>
+                    <li><a href="equipment.php"><i class="fas fa-tools"></i> Equipment</a></li>
+                    <li><a href="staff.php"><i class="fas fa-user-nurse"></i> Staff</a></li>
+                    <li><a href="attendance.php"><i class="fas fa-clock"></i> Attendance</a></li>
+                <?php endif; ?>
+                
+                <?php if (in_array($user_role, ['admin', 'doctor', 'nurse', 'lab_technician', 'pharmacy_staff'])): ?>
+                    <li><a href="reports.php"><i class="fas fa-chart-bar"></i> Reports</a></li>
+                <?php endif; ?>
+                
+                <?php if (in_array($user_role, ['admin'])): ?>
+                    <li><a href="settings.php"><i class="fas fa-cog"></i> Settings</a></li>
+                <?php endif; ?>
+                
+                <?php if (in_array($user_role, ['patient'])): ?>
+                    <li><a href="my-appointments.php"><i class="fas fa-calendar-check"></i> My Appointments</a></li>
+                    <li><a href="my-prescriptions.php"><i class="fas fa-prescription"></i> My Prescriptions</a></li>
+                    <li><a href="my-bills.php"><i class="fas fa-money-bill-wave"></i> My Bills</a></li>
+                    <li><a href="my-medical-history.php"><i class="fas fa-file-medical"></i> Medical History</a></li>
+                <?php endif; ?>
             </ul>
         </aside>
 
@@ -200,6 +277,138 @@ try {
                         <h3><?php echo number_format($stats['pending_bills'] ?? 0); ?></h3>
                         <p>Pending Bills</p>
                         <i class="fas fa-clock stat-icon"></i>
+                    </div>
+                <?php elseif ($user_role === 'receptionist'): ?>
+                    <div class="stat-card">
+                        <h3><?php echo number_format($stats['today_appointments'] ?? 0); ?></h3>
+                        <p>Today's Appointments</p>
+                        <i class="fas fa-calendar-check stat-icon"></i>
+                    </div>
+                    <div class="stat-card">
+                        <h3><?php echo number_format($stats['pending_appointments'] ?? 0); ?></h3>
+                        <p>Pending Appointments</p>
+                        <i class="fas fa-clock stat-icon"></i>
+                    </div>
+                    <div class="stat-card">
+                        <h3><?php echo number_format($stats['today_registrations'] ?? 0); ?></h3>
+                        <p>Today's Registrations</p>
+                        <i class="fas fa-user-plus stat-icon"></i>
+                    </div>
+                    <div class="stat-card">
+                        <h3><?php echo number_format($stats['pending_bills'] ?? 0); ?></h3>
+                        <p>Pending Bills</p>
+                        <i class="fas fa-money-bill-wave stat-icon"></i>
+                    </div>
+                <?php elseif ($user_role === 'lab_technician'): ?>
+                    <div class="stat-card">
+                        <h3><?php echo number_format($stats['pending_tests'] ?? 0); ?></h3>
+                        <p>Pending Tests</p>
+                        <i class="fas fa-clock stat-icon"></i>
+                    </div>
+                    <div class="stat-card">
+                        <h3><?php echo number_format($stats['completed_tests'] ?? 0); ?></h3>
+                        <p>Completed Today</p>
+                        <i class="fas fa-check-circle stat-icon"></i>
+                    </div>
+                    <div class="stat-card">
+                        <h3><?php echo number_format($stats['total_tests'] ?? 0); ?></h3>
+                        <p>Total Tests</p>
+                        <i class="fas fa-flask stat-icon"></i>
+                    </div>
+                    <div class="stat-card">
+                        <h3><?php echo number_format($stats['abnormal_results'] ?? 0); ?></h3>
+                        <p>Abnormal Results</p>
+                        <i class="fas fa-exclamation-triangle stat-icon"></i>
+                    </div>
+                <?php elseif ($user_role === 'pharmacy_staff'): ?>
+                    <div class="stat-card">
+                        <h3><?php echo number_format($stats['total_medicines'] ?? 0); ?></h3>
+                        <p>Total Medicines</p>
+                        <i class="fas fa-pills stat-icon"></i>
+                    </div>
+                    <div class="stat-card">
+                        <h3><?php echo number_format($stats['low_stock_medicines'] ?? 0); ?></h3>
+                        <p>Low Stock Items</p>
+                        <i class="fas fa-exclamation-triangle stat-icon"></i>
+                    </div>
+                    <div class="stat-card">
+                        <h3><?php echo number_format($stats['today_prescriptions'] ?? 0); ?></h3>
+                        <p>Today's Prescriptions</p>
+                        <i class="fas fa-prescription stat-icon"></i>
+                    </div>
+                    <div class="stat-card">
+                        <h3><?php echo number_format($stats['pending_dispensing'] ?? 0); ?></h3>
+                        <p>Pending Dispensing</p>
+                        <i class="fas fa-clock stat-icon"></i>
+                    </div>
+                <?php elseif ($user_role === 'intern_doctor'): ?>
+                    <div class="stat-card">
+                        <h3><?php echo number_format($stats['my_patients'] ?? 0); ?></h3>
+                        <p>My Patients</p>
+                        <i class="fas fa-users stat-icon"></i>
+                    </div>
+                    <div class="stat-card">
+                        <h3><?php echo number_format($stats['today_appointments'] ?? 0); ?></h3>
+                        <p>Today's Appointments</p>
+                        <i class="fas fa-calendar-check stat-icon"></i>
+                    </div>
+                    <div class="stat-card">
+                        <h3><?php echo number_format($stats['pending_appointments'] ?? 0); ?></h3>
+                        <p>Pending Appointments</p>
+                        <i class="fas fa-clock stat-icon"></i>
+                    </div>
+                    <div class="stat-card">
+                        <h3><?php echo number_format($stats['total_prescriptions'] ?? 0); ?></h3>
+                        <p>Total Prescriptions</p>
+                        <i class="fas fa-prescription stat-icon"></i>
+                    </div>
+                <?php elseif ($user_role === 'intern_nurse'): ?>
+                    <div class="stat-card">
+                        <h3><?php echo number_format($stats['assigned_patients'] ?? 0); ?></h3>
+                        <p>Assigned Patients</p>
+                        <i class="fas fa-users stat-icon"></i>
+                    </div>
+                    <div class="stat-card">
+                        <h3><?php echo number_format($stats['today_vitals'] ?? 0); ?></h3>
+                        <p>Vitals Recorded Today</p>
+                        <i class="fas fa-heartbeat stat-icon"></i>
+                    </div>
+                    <div class="stat-card">
+                        <h3><?php echo number_format($stats['total_vitals'] ?? 0); ?></h3>
+                        <p>Total Vitals Recorded</p>
+                        <i class="fas fa-chart-line stat-icon"></i>
+                    </div>
+                <?php elseif ($user_role === 'intern_lab'): ?>
+                    <div class="stat-card">
+                        <h3><?php echo number_format($stats['pending_tests'] ?? 0); ?></h3>
+                        <p>Pending Tests</p>
+                        <i class="fas fa-clock stat-icon"></i>
+                    </div>
+                    <div class="stat-card">
+                        <h3><?php echo number_format($stats['completed_tests'] ?? 0); ?></h3>
+                        <p>Completed Today</p>
+                        <i class="fas fa-check-circle stat-icon"></i>
+                    </div>
+                    <div class="stat-card">
+                        <h3><?php echo number_format($stats['total_tests'] ?? 0); ?></h3>
+                        <p>Total Tests</p>
+                        <i class="fas fa-flask stat-icon"></i>
+                    </div>
+                <?php elseif ($user_role === 'intern_pharmacy'): ?>
+                    <div class="stat-card">
+                        <h3><?php echo number_format($stats['total_medicines'] ?? 0); ?></h3>
+                        <p>Total Medicines</p>
+                        <i class="fas fa-pills stat-icon"></i>
+                    </div>
+                    <div class="stat-card">
+                        <h3><?php echo number_format($stats['low_stock_medicines'] ?? 0); ?></h3>
+                        <p>Low Stock Items</p>
+                        <i class="fas fa-exclamation-triangle stat-icon"></i>
+                    </div>
+                    <div class="stat-card">
+                        <h3><?php echo number_format($stats['today_prescriptions'] ?? 0); ?></h3>
+                        <p>Today's Prescriptions</p>
+                        <i class="fas fa-prescription stat-icon"></i>
                     </div>
                 <?php endif; ?>
             </div>
