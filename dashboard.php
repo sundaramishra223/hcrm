@@ -15,14 +15,14 @@ $user_name = $_SESSION['username'];
 $stats = [];
 try {
     if ($user_role === 'admin') {
-        $stats['total_patients'] = $db->query("SELECT COUNT(*) as count FROM patients WHERE hospital_id = 1")->fetch()['count'];
-        $stats['total_doctors'] = $db->query("SELECT COUNT(*) as count FROM doctors WHERE hospital_id = 1")->fetch()['count'];
-        $stats['total_appointments'] = $db->query("SELECT COUNT(*) as count FROM appointments WHERE hospital_id = 1 AND appointment_date = CURDATE()")->fetch()['count'];
-        $stats['total_revenue'] = $db->query("SELECT SUM(total_amount) as revenue FROM bills WHERE hospital_id = 1 AND DATE(created_at) = CURDATE()")->fetch()['revenue'] ?? 0;
-        $stats['pending_bills'] = $db->query("SELECT COUNT(*) as count FROM bills WHERE hospital_id = 1 AND payment_status != 'paid'")->fetch()['count'];
-        $stats['available_beds'] = $db->query("SELECT COUNT(*) as count FROM beds WHERE hospital_id = 1 AND status = 'available'")->fetch()['count'];
-        $stats['total_staff'] = $db->query("SELECT COUNT(*) as count FROM staff WHERE hospital_id = 1")->fetch()['count'];
-        $stats['today_visits'] = $db->query("SELECT COUNT(*) as count FROM patient_visits WHERE hospital_id = 1 AND visit_date = CURDATE()")->fetch()['count'];
+        $stats['total_patients'] = $db->query("SELECT COUNT(*) as count FROM patients")->fetch()['count'];
+        $stats['total_doctors'] = $db->query("SELECT COUNT(*) as count FROM doctors")->fetch()['count'];
+        $stats['total_appointments'] = $db->query("SELECT COUNT(*) as count FROM appointments WHERE appointment_date = CURDATE()")->fetch()['count'];
+        $stats['total_revenue'] = $db->query("SELECT SUM(total_amount) as revenue FROM bills WHERE DATE(created_at) = CURDATE()")->fetch()['revenue'] ?? 0;
+        $stats['pending_bills'] = $db->query("SELECT COUNT(*) as count FROM bills WHERE payment_status != 'paid'")->fetch()['count'];
+        $stats['available_beds'] = $db->query("SELECT COUNT(*) as count FROM beds WHERE status = 'available'")->fetch()['count'];
+        $stats['total_staff'] = $db->query("SELECT COUNT(*) as count FROM staff")->fetch()['count'];
+        $stats['today_visits'] = $db->query("SELECT COUNT(*) as count FROM patient_visits WHERE visit_date = CURDATE()")->fetch()['count'];
     } elseif ($user_role === 'doctor') {
         $doctor_id = $db->query("SELECT id FROM doctors WHERE user_id = ?", [$_SESSION['user_id']])->fetch()['id'];
         $stats['my_patients'] = $db->query("SELECT COUNT(*) as count FROM patients WHERE assigned_doctor_id = ?", [$doctor_id])->fetch()['count'];
@@ -39,19 +39,19 @@ try {
         $stats['my_bills'] = $db->query("SELECT COUNT(*) as count FROM bills WHERE patient_id = ?", [$patient_id])->fetch()['count'];
         $stats['pending_bills'] = $db->query("SELECT COUNT(*) as count FROM bills WHERE patient_id = ? AND payment_status != 'paid'", [$patient_id])->fetch()['count'];
     } elseif ($user_role === 'receptionist') {
-        $stats['today_appointments'] = $db->query("SELECT COUNT(*) as count FROM appointments WHERE hospital_id = 1 AND appointment_date = CURDATE()")->fetch()['count'];
-        $stats['pending_appointments'] = $db->query("SELECT COUNT(*) as count FROM appointments WHERE hospital_id = 1 AND status = 'scheduled'")->fetch()['count'];
-        $stats['today_registrations'] = $db->query("SELECT COUNT(*) as count FROM patients WHERE hospital_id = 1 AND DATE(created_at) = CURDATE()")->fetch()['count'];
-        $stats['pending_bills'] = $db->query("SELECT COUNT(*) as count FROM bills WHERE hospital_id = 1 AND payment_status != 'paid'")->fetch()['count'];
+        $stats['today_appointments'] = $db->query("SELECT COUNT(*) as count FROM appointments WHERE appointment_date = CURDATE()")->fetch()['count'];
+        $stats['pending_appointments'] = $db->query("SELECT COUNT(*) as count FROM appointments WHERE status = 'scheduled'")->fetch()['count'];
+        $stats['today_registrations'] = $db->query("SELECT COUNT(*) as count FROM patients WHERE DATE(created_at) = CURDATE()")->fetch()['count'];
+        $stats['pending_bills'] = $db->query("SELECT COUNT(*) as count FROM bills WHERE payment_status != 'paid'")->fetch()['count'];
     } elseif ($user_role === 'lab_technician') {
         $stats['pending_tests'] = $db->query("SELECT COUNT(*) as count FROM lab_order_tests WHERE status IN ('pending', 'in_progress')")->fetch()['count'];
         $stats['completed_tests'] = $db->query("SELECT COUNT(*) as count FROM lab_order_tests WHERE status = 'completed' AND DATE(completed_at) = CURDATE()")->fetch()['count'];
         $stats['total_tests'] = $db->query("SELECT COUNT(*) as count FROM lab_order_tests")->fetch()['count'];
         $stats['abnormal_results'] = $db->query("SELECT COUNT(*) as count FROM lab_order_tests WHERE is_abnormal = 1 AND DATE(completed_at) = CURDATE()")->fetch()['count'];
     } elseif ($user_role === 'pharmacy_staff') {
-        $stats['total_medicines'] = $db->query("SELECT COUNT(*) as count FROM medicines WHERE hospital_id = 1")->fetch()['count'];
-        $stats['low_stock_medicines'] = $db->query("SELECT COUNT(*) as count FROM medicines WHERE hospital_id = 1 AND current_stock <= reorder_level")->fetch()['count'];
-        $stats['today_prescriptions'] = $db->query("SELECT COUNT(*) as count FROM prescriptions WHERE hospital_id = 1 AND DATE(created_at) = CURDATE()")->fetch()['count'];
+        $stats['total_medicines'] = $db->query("SELECT COUNT(*) as count FROM medicines")->fetch()['count'];
+        $stats['low_stock_medicines'] = $db->query("SELECT COUNT(*) as count FROM medicines WHERE current_stock <= reorder_level")->fetch()['count'];
+        $stats['today_prescriptions'] = $db->query("SELECT COUNT(*) as count FROM prescriptions WHERE DATE(created_at) = CURDATE()")->fetch()['count'];
         $stats['pending_dispensing'] = $db->query("SELECT COUNT(*) as count FROM prescription_medicines WHERE dispensed_quantity < quantity")->fetch()['count'];
     } elseif ($user_role === 'intern_doctor') {
         $doctor_id = $db->query("SELECT id FROM doctors WHERE user_id = ?", [$_SESSION['user_id']])->fetch()['id'];
@@ -68,9 +68,9 @@ try {
         $stats['completed_tests'] = $db->query("SELECT COUNT(*) as count FROM lab_order_tests WHERE status = 'completed' AND DATE(completed_at) = CURDATE()")->fetch()['count'];
         $stats['total_tests'] = $db->query("SELECT COUNT(*) as count FROM lab_order_tests")->fetch()['count'];
     } elseif ($user_role === 'intern_pharmacy') {
-        $stats['total_medicines'] = $db->query("SELECT COUNT(*) as count FROM medicines WHERE hospital_id = 1")->fetch()['count'];
-        $stats['low_stock_medicines'] = $db->query("SELECT COUNT(*) as count FROM medicines WHERE hospital_id = 1 AND current_stock <= reorder_level")->fetch()['count'];
-        $stats['today_prescriptions'] = $db->query("SELECT COUNT(*) as count FROM prescriptions WHERE hospital_id = 1 AND DATE(created_at) = CURDATE()")->fetch()['count'];
+        $stats['total_medicines'] = $db->query("SELECT COUNT(*) as count FROM medicines")->fetch()['count'];
+        $stats['low_stock_medicines'] = $db->query("SELECT COUNT(*) as count FROM medicines WHERE current_stock <= reorder_level")->fetch()['count'];
+        $stats['today_prescriptions'] = $db->query("SELECT COUNT(*) as count FROM prescriptions WHERE DATE(created_at) = CURDATE()")->fetch()['count'];
     }
 } catch (Exception $e) {
     $stats = [];
@@ -85,7 +85,6 @@ try {
                    CONCAT('New appointment: ', p.first_name, ' ', p.last_name) as description
             FROM appointments a 
             JOIN patients p ON a.patient_id = p.id 
-            WHERE a.hospital_id = 1 
             ORDER BY a.created_at DESC LIMIT 5
         ")->fetchAll();
     }
