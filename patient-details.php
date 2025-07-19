@@ -20,11 +20,9 @@ $db = new Database();
 
 // Check permissions and get patient data
 $patient_sql = "SELECT p.*, 
-                TIMESTAMPDIFF(YEAR, p.date_of_birth, CURDATE()) as age,
-                h.name as hospital_name
+                TIMESTAMPDIFF(YEAR, p.date_of_birth, CURDATE()) as age
                 FROM patients p
-                JOIN hospitals h ON p.hospital_id = h.id
-                WHERE p.id = ? AND p.hospital_id = 1";
+                WHERE p.id = ?";
 
 $patient = $db->query($patient_sql, [$patient_id])->fetch();
 

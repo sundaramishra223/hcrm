@@ -39,7 +39,7 @@ if ($_POST && isset($_POST['action']) && $_POST['action'] === 'book_appointment'
             $appointment_number = 'APT' . date('Ymd') . sprintf('%04d', rand(1000, 9999));
             
             // Insert appointment
-            $sql = "INSERT INTO appointments (hospital_id, patient_id, doctor_id, appointment_number, appointment_date, appointment_time, duration_minutes, type, chief_complaint, notes, consultation_fee, created_by) VALUES (1, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
+            $sql = "INSERT INTO appointments (patient_id, doctor_id, appointment_number, appointment_date, appointment_time, duration_minutes, type, chief_complaint, notes, consultation_fee, created_by) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
             
             // Get doctor's consultation fee
             $doctor_fee = $db->query("SELECT consultation_fee FROM doctors WHERE id = ?", [$_POST['doctor_id']])->fetch()['consultation_fee'];
@@ -70,7 +70,7 @@ $doctors = $db->query("
     SELECT d.*, CONCAT(d.first_name, ' ', d.last_name) as full_name, dept.name as department_name 
     FROM doctors d 
     LEFT JOIN departments dept ON d.department_id = dept.id
-    WHERE d.hospital_id = 1 AND d.is_available = 1
+    WHERE d.is_available = 1
     ORDER BY d.first_name, d.last_name
 ")->fetchAll();
 
@@ -80,7 +80,6 @@ if (in_array($user_role, ['admin', 'receptionist'])) {
     $patients = $db->query("
         SELECT id, patient_id, CONCAT(first_name, ' ', last_name) as full_name, phone 
         FROM patients 
-        WHERE hospital_id = 1 
         ORDER BY first_name, last_name
     ")->fetchAll();
 } else if ($user_role === 'patient') {
@@ -88,7 +87,7 @@ if (in_array($user_role, ['admin', 'receptionist'])) {
     $patients = $db->query("
         SELECT id, patient_id, CONCAT(first_name, ' ', last_name) as full_name, phone 
         FROM patients 
-        WHERE user_id = ? AND hospital_id = 1
+        WHERE user_id = ?
     ", [$_SESSION['user_id']])->fetchAll();
     
     if (!empty($patients)) {

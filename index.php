@@ -190,14 +190,54 @@ if ($_POST) {
             </form>
             
             <div class="demo-users">
-                <h4>Demo Login Credentials:</h4>
+                <h4>Demo Login Credentials (Click to Fill):</h4>
                 <p><strong>Admin:</strong> admin@hospital.com / password</p>
                 <p><strong>Doctor:</strong> dr.sharma@hospital.com / password</p>
-                <p><strong>Patient:</strong> john.doe@email.com / password</p>
+                <p><strong>Patient:</strong> patient.demo@hospital.com / Patient123!</p>
                 <p><strong>Nurse:</strong> priya.nurse@hospital.com / password</p>
                 <p><strong>Reception:</strong> reception@hospital.com / password</p>
+                <small style="color: #666; margin-top: 10px; display: block;">
+                    💡 Click any credential above to auto-fill the form
+                </small>
             </div>
         </div>
     </div>
+
+    <!-- Password Validation Script -->
+    <script src="includes/password-validation.js"></script>
+    <script>
+        // Theme support for login page
+        const savedTheme = localStorage.getItem('theme') || 'light';
+        document.documentElement.setAttribute('data-theme', savedTheme);
+        
+        // Demo credential fill
+        document.addEventListener('DOMContentLoaded', () => {
+            const demoUsers = document.querySelectorAll('.demo-users p');
+            demoUsers.forEach(user => {
+                user.addEventListener('click', () => {
+                    const text = user.textContent;
+                    const emailMatch = text.match(/(\S+@\S+\.\S+)/);
+                    
+                    if (emailMatch) {
+                        const email = emailMatch[1];
+                        document.getElementById('email').value = email;
+                        
+                        // Extract password based on the credential type
+                        if (email === 'patient.demo@hospital.com') {
+                            document.getElementById('password').value = 'Patient123!';
+                        } else if (text.includes('/ password')) {
+                            document.getElementById('password').value = 'password';
+                        }
+                        
+                        // Add visual feedback
+                        user.style.background = '#d4edda';
+                        setTimeout(() => {
+                            user.style.background = '';
+                        }, 1000);
+                    }
+                });
+            });
+        });
+    </script>
 </body>
 </html>
