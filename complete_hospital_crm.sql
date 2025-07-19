@@ -474,6 +474,21 @@ CREATE TABLE bill_items (
     FOREIGN KEY (bill_id) REFERENCES bills(id)
 );
 
+-- Bill Payments table
+CREATE TABLE bill_payments (
+    id INT PRIMARY KEY AUTO_INCREMENT,
+    bill_id INT NOT NULL,
+    payment_amount DECIMAL(12,2) NOT NULL,
+    payment_method ENUM('cash', 'card', 'online', 'cheque', 'insurance') NOT NULL,
+    payment_reference VARCHAR(100),
+    payment_date DATETIME NOT NULL,
+    notes TEXT,
+    recorded_by INT NOT NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (bill_id) REFERENCES bills(id),
+    FOREIGN KEY (recorded_by) REFERENCES users(id)
+);
+
 -- =============================================
 -- PRESCRIPTIONS
 -- =============================================

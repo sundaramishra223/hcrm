@@ -41,7 +41,7 @@ if ($_POST && isset($_POST['action']) && $_POST['action'] === 'create_bill') {
         $total_amount = $subtotal - $discount + $tax_amount;
         
         // Insert bill
-        $bill_sql = "INSERT INTO bills (hospital_id, patient_id, visit_id, bill_number, bill_date, bill_type, subtotal, discount_amount, tax_amount, total_amount, balance_amount, payment_status, notes, created_by) VALUES (1, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', ?, ?)";
+        $bill_sql = "INSERT INTO bills (patient_id, visit_id, bill_number, bill_date, bill_type, subtotal, discount_amount, tax_amount, total_amount, balance_amount, payment_status, notes, created_by) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', ?, ?)";
         
         $db->query($bill_sql, [
             $_POST['patient_id'],
@@ -97,9 +97,13 @@ if ($_POST && isset($_POST['action']) && $_POST['action'] === 'create_bill') {
 // Handle payment recording
 if ($_POST && isset($_POST['action']) && $_POST['action'] === 'record_payment') {
     try {
+        $db->getConnection()->beginTransaction();
+        
         $bill_id = $_POST['bill_id'];
         $payment_amount = (float)$_POST['payment_amount'];
         $payment_method = $_POST['payment_method'];
+        $payment_reference = $_POST['payment_reference'] ?? '';
+        $notes = $_POST['notes'] ?? '';
         
         // Get current bill details
         $bill = $db->query("SELECT * FROM bills WHERE id = ?", [$bill_id])->fetch();
@@ -123,9 +127,27 @@ if ($_POST && isset($_POST['action']) && $_POST['action'] === 'record_payment') 
                 [$new_paid_amount, $new_balance, $payment_status, $payment_method, $bill_id]
             );
             
+            // Record payment in bill_payments table (if exists)
+            try {
+                $payment_sql = "INSERT INTO bill_payments (bill_id, payment_amount, payment_method, payment_reference, payment_date, notes, recorded_by) VALUES (?, ?, ?, ?, NOW(), ?, ?)";
+                $db->query($payment_sql, [
+                    $bill_id,
+                    $payment_amount,
+                    $payment_method,
+                    $payment_reference,
+                    $notes,
+                    $_SESSION['user_id']
+                ]);
+            } catch (Exception $e) {
+                // If bill_payments table doesn't exist, continue without recording payment history
+                error_log("Bill payments table not found: " . $e->getMessage());
+            }
+            
+            $db->getConnection()->commit();
             $message = "Payment recorded successfully!";
         }
     } catch (Exception $e) {
+        $db->getConnection()->rollBack();
         $message = "Error: " . $e->getMessage();
     }
 }
@@ -142,7 +164,7 @@ $sql = "SELECT b.*,
         p.phone as patient_phone
         FROM bills b
         JOIN patients p ON b.patient_id = p.id
-        WHERE b.hospital_id = 1";
+        WHERE 1=1";
 
 $params = [];
 
@@ -175,17 +197,16 @@ $bills = $db->query($sql, $params)->fetchAll();
 $patients = $db->query("
     SELECT id, patient_id, CONCAT(first_name, ' ', last_name) as full_name, phone 
     FROM patients 
-    WHERE hospital_id = 1 
     ORDER BY first_name, last_name
 ")->fetchAll();
 
 // Get billing statistics
 $stats = [];
 try {
-    $stats['total_bills'] = $db->query("SELECT COUNT(*) as count FROM bills WHERE hospital_id = 1")->fetch()['count'];
-    $stats['pending_amount'] = $db->query("SELECT SUM(balance_amount) as amount FROM bills WHERE hospital_id = 1 AND payment_status != 'paid'")->fetch()['amount'] ?? 0;
-    $stats['today_revenue'] = $db->query("SELECT SUM(paid_amount) as amount FROM bills WHERE hospital_id = 1 AND DATE(updated_at) = CURDATE()")->fetch()['amount'] ?? 0;
-    $stats['monthly_revenue'] = $db->query("SELECT SUM(paid_amount) as amount FROM bills WHERE hospital_id = 1 AND MONTH(updated_at) = MONTH(CURDATE()) AND YEAR(updated_at) = YEAR(CURDATE())")->fetch()['amount'] ?? 0;
+    $stats['total_bills'] = $db->query("SELECT COUNT(*) as count FROM bills")->fetch()['count'];
+    $stats['pending_amount'] = $db->query("SELECT SUM(balance_amount) as amount FROM bills WHERE payment_status != 'paid'")->fetch()['amount'] ?? 0;
+    $stats['today_revenue'] = $db->query("SELECT SUM(paid_amount) as amount FROM bills WHERE DATE(updated_at) = CURDATE()")->fetch()['amount'] ?? 0;
+    $stats['monthly_revenue'] = $db->query("SELECT SUM(paid_amount) as amount FROM bills WHERE MONTH(updated_at) = MONTH(CURDATE()) AND YEAR(updated_at) = YEAR(CURDATE())")->fetch()['amount'] ?? 0;
 } catch (Exception $e) {
     $stats = ['total_bills' => 0, 'pending_amount' => 0, 'today_revenue' => 0, 'monthly_revenue' => 0];
 }
@@ -810,6 +831,17 @@ try {
                         </div>
                     </div>
                     
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label for="payment_reference">Payment Reference</label>
+                            <input type="text" id="payment_reference" name="payment_reference" placeholder="Transaction ID, Cheque No., etc.">
+                        </div>
+                        <div class="form-group">
+                            <label for="payment_notes">Notes</label>
+                            <textarea id="payment_notes" name="notes" rows="2" placeholder="Additional notes..."></textarea>
+                        </div>
+                    </div>
+                    
                     <div style="text-align: right; margin-top: 20px;">
                         <button type="button" onclick="closePaymentModal()" class="btn btn-secondary">Cancel</button>
                         <button type="submit" class="btn btn-success">Record Payment</button>
@@ -820,6 +852,11 @@ try {
     </div>
     
     <script>
+        // Show message if exists
+        <?php if ($message): ?>
+            alert('<?php echo addslashes($message); ?>');
+        <?php endif; ?>
+        
         let itemCount = 1;
         
         function openBillModal() {
