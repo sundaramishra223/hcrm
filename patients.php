@@ -1,6 +1,7 @@
 <?php
 session_start();
 require_once 'config/database.php';
+require_once 'includes/functions.php';
 
 // Check if user is logged in and has permission
 if (!isset($_SESSION['user_id'])) {
@@ -15,41 +16,41 @@ if (!in_array($user_role, ['admin', 'receptionist'])) {
 }
 
 $db = new Database();
-$message = '';
 $search = $_GET['search'] ?? '';
 
 // Handle form submission for new patient
 if ($_POST && isset($_POST['action']) && $_POST['action'] === 'add_patient') {
     try {
-        // Generate patient ID
-        $stmt = $db->query("CALL GetNextPatientId(1, @next_id)");
-        $result = $db->query("SELECT @next_id as patient_id")->fetch();
-        $patient_id = $result['patient_id'];
+        // Generate patient ID manually
+        $year = date('Y');
+        $stmt = $db->query("SELECT COUNT(*) as count FROM patients WHERE hospital_id = 1 AND YEAR(created_at) = ?", [$year]);
+        $count = $stmt->fetch()['count'] + 1;
+        $patient_id = "P" . $year . str_pad($count, 4, '0', STR_PAD_LEFT);
         
         // Insert patient
-        $sql = "INSERT INTO patients (hospital_id, patient_id, first_name, middle_name, last_name, phone, emergency_contact, email, address, date_of_birth, gender, blood_group, marital_status, occupation, medical_history, allergies) VALUES (1, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
+        $sql = "INSERT INTO patients (hospital_id, patient_id, first_name, middle_name, last_name, phone, emergency_contact, email, address, date_of_birth, gender, blood_group, marital_status, occupation, medical_history, allergies, created_at) VALUES (1, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW())";
         
         $db->query($sql, [
             $patient_id,
             $_POST['first_name'],
-            $_POST['middle_name'],
+            $_POST['middle_name'] ?? '',
             $_POST['last_name'],
             $_POST['phone'],
-            $_POST['emergency_contact'],
-            $_POST['email'],
-            $_POST['address'],
-            $_POST['date_of_birth'],
+            $_POST['emergency_contact'] ?? '',
+            $_POST['email'] ?? '',
+            $_POST['address'] ?? '',
+            $_POST['date_of_birth'] ?? null,
             $_POST['gender'],
-            $_POST['blood_group'],
-            $_POST['marital_status'],
-            $_POST['occupation'],
-            $_POST['medical_history'],
-            $_POST['allergies']
+            $_POST['blood_group'] ?? '',
+            $_POST['marital_status'] ?? '',
+            $_POST['occupation'] ?? '',
+            $_POST['medical_history'] ?? '',
+            $_POST['allergies'] ?? ''
         ]);
         
-        $message = "Patient added successfully! ID: " . $patient_id;
+        showSuccessPopup("Patient added successfully! ID: " . $patient_id, "patients.php");
     } catch (Exception $e) {
-        $message = "Error: " . $e->getMessage();
+        showErrorPopup("Error adding patient: " . $e->getMessage());
     }
 }
 
@@ -341,11 +342,7 @@ if ($search) {
             </div>
         </div>
         
-        <?php if ($message): ?>
-            <div class="alert <?php echo strpos($message, 'Error') === 0 ? 'alert-danger' : 'alert-success'; ?>">
-                <?php echo htmlspecialchars($message); ?>
-            </div>
-        <?php endif; ?>
+
         
         <div class="search-section">
             <form method="GET" class="search-form">
