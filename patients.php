@@ -23,7 +23,7 @@ if ($_POST && isset($_POST['action']) && $_POST['action'] === 'add_patient') {
     try {
         // Generate patient ID manually
         $year = date('Y');
-        $stmt = $db->query("SELECT COUNT(*) as count FROM patients WHERE YEAR(created_at) = ?", [$year]);
+        $stmt = $db->query("SELECT COUNT(*) as count FROM patients WHERE YEAR(created_at) = ? AND hospital_id = 1", [$year]);
         $count = $stmt->fetch()['count'] + 1;
         $patient_id = "P" . $year . str_pad($count, 4, '0', STR_PAD_LEFT);
         
@@ -37,7 +37,7 @@ if ($_POST && isset($_POST['action']) && $_POST['action'] === 'add_patient') {
         $hashed_password = password_hash($_POST['password'], PASSWORD_DEFAULT);
         
         // Insert patient
-        $sql = "INSERT INTO patients (patient_id, first_name, middle_name, last_name, phone, emergency_contact, email, address, date_of_birth, gender, blood_group, marital_status, occupation, medical_history, allergies, password, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW())";
+        $sql = "INSERT INTO patients (patient_id, first_name, middle_name, last_name, phone, emergency_contact, email, address, date_of_birth, gender, blood_group, marital_status, occupation, medical_history, allergies, password, hospital_id, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, NOW())";
         
         $db->query($sql, [
             $patient_id,
@@ -68,10 +68,11 @@ if ($_POST && isset($_POST['action']) && $_POST['action'] === 'add_patient') {
 $sql = "SELECT p.*, 
         TIMESTAMPDIFF(YEAR, p.date_of_birth, CURDATE()) as age,
         (SELECT COUNT(*) FROM appointments WHERE patient_id = p.id) as appointment_count
-        FROM patients p";
+        FROM patients p
+        WHERE p.hospital_id = 1";
 
 if ($search) {
-    $sql .= " WHERE (p.first_name LIKE ? OR p.last_name LIKE ? OR p.phone LIKE ? OR p.patient_id LIKE ?)";
+    $sql .= " AND (p.first_name LIKE ? OR p.last_name LIKE ? OR p.phone LIKE ? OR p.patient_id LIKE ?)";
     $search_param = "%$search%";
     $patients = $db->query($sql, [$search_param, $search_param, $search_param, $search_param])->fetchAll();
 } else {

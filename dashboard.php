@@ -15,7 +15,7 @@ $user_name = $_SESSION['username'];
 $stats = [];
 try {
     if ($user_role === 'admin') {
-        $stats['total_patients'] = $db->query("SELECT COUNT(*) as count FROM patients")->fetch()['count'];
+        $stats['total_patients'] = $db->query("SELECT COUNT(*) as count FROM patients WHERE hospital_id = 1")->fetch()['count'];
         $stats['total_doctors'] = $db->query("SELECT COUNT(*) as count FROM doctors")->fetch()['count'];
         $stats['total_appointments'] = $db->query("SELECT COUNT(*) as count FROM appointments WHERE appointment_date = CURDATE()")->fetch()['count'];
         $stats['total_revenue'] = $db->query("SELECT SUM(total_amount) as revenue FROM bills WHERE DATE(created_at) = CURDATE()")->fetch()['revenue'] ?? 0;
@@ -41,7 +41,7 @@ try {
     } elseif ($user_role === 'receptionist') {
         $stats['today_appointments'] = $db->query("SELECT COUNT(*) as count FROM appointments WHERE appointment_date = CURDATE()")->fetch()['count'];
         $stats['pending_appointments'] = $db->query("SELECT COUNT(*) as count FROM appointments WHERE status = 'scheduled'")->fetch()['count'];
-        $stats['today_registrations'] = $db->query("SELECT COUNT(*) as count FROM patients WHERE DATE(created_at) = CURDATE()")->fetch()['count'];
+        $stats['today_registrations'] = $db->query("SELECT COUNT(*) as count FROM patients WHERE DATE(created_at) = CURDATE() AND hospital_id = 1")->fetch()['count'];
         $stats['pending_bills'] = $db->query("SELECT COUNT(*) as count FROM bills WHERE payment_status != 'paid'")->fetch()['count'];
     } elseif ($user_role === 'lab_technician') {
         $stats['pending_tests'] = $db->query("SELECT COUNT(*) as count FROM lab_order_tests WHERE status IN ('pending', 'in_progress')")->fetch()['count'];
@@ -157,7 +157,7 @@ try {
                 
                 <?php 
                 // Smart ambulance access based on role requirements
-                $ambulance_roles = ['admin', 'receptionist', 'doctor', 'nurse', 'patient'];
+                $ambulance_roles = ['admin', 'receptionist', 'doctor', 'nurse', 'patient', 'intern_doctor', 'intern_nurse'];
                 if (in_array($user_role, $ambulance_roles)): 
                 ?>
                     <li><a href="ambulance-management.php"><i class="fas fa-ambulance"></i> <?php echo $user_role === 'patient' ? 'My Ambulance Bookings' : 'Ambulance Management'; ?></a></li>

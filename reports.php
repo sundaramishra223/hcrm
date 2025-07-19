@@ -36,8 +36,8 @@ try {
     $overview_stats = [];
     
     // Patient Statistics
-    $overview_stats['total_patients'] = $db->query("SELECT COUNT(*) as count FROM patients")->fetch()['count'];
-    $overview_stats['new_patients'] = $db->query("SELECT COUNT(*) as count FROM patients WHERE DATE(created_at) BETWEEN ? AND ?", [$date_from, $date_to])->fetch()['count'];
+    $overview_stats['total_patients'] = $db->query("SELECT COUNT(*) as count FROM patients WHERE hospital_id = 1")->fetch()['count'];
+    $overview_stats['new_patients'] = $db->query("SELECT COUNT(*) as count FROM patients WHERE DATE(created_at) BETWEEN ? AND ? AND hospital_id = 1", [$date_from, $date_to])->fetch()['count'];
     
     // Appointment Statistics
     $overview_stats['total_appointments'] = $db->query("SELECT COUNT(*) as count FROM appointments WHERE DATE(appointment_date) BETWEEN ? AND ?", [$date_from, $date_to])->fetch()['count'];

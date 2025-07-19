@@ -12,7 +12,7 @@ if (!isset($_SESSION['user_id'])) {
 $user_role = $_SESSION['role'];
 
 // Smart role-based access control
-$ambulance_access_roles = ['admin', 'receptionist', 'doctor', 'nurse', 'patient'];
+$ambulance_access_roles = ['admin', 'receptionist', 'doctor', 'nurse', 'patient', 'intern_doctor', 'intern_nurse'];
 
 if (!in_array($user_role, $ambulance_access_roles)) {
     header('Location: dashboard.php');
@@ -21,9 +21,9 @@ if (!in_array($user_role, $ambulance_access_roles)) {
 
 // Permission levels based on role requirements
 $can_manage_ambulances = in_array($user_role, ['admin', 'receptionist']); // Only admin/receptionist can manage fleet
-$can_book_ambulances = in_array($user_role, ['admin', 'receptionist', 'doctor', 'nurse']); // Medical staff can book
+$can_book_ambulances = in_array($user_role, ['admin', 'receptionist', 'doctor', 'nurse', 'intern_doctor', 'intern_nurse']); // Medical staff can book
 $can_view_own_bookings = $user_role === 'patient'; // Patients see only their bookings
-$can_view_all_bookings = in_array($user_role, ['admin', 'receptionist', 'doctor', 'nurse']); // Staff see all bookings
+$can_view_all_bookings = in_array($user_role, ['admin', 'receptionist', 'doctor', 'nurse', 'intern_doctor', 'intern_nurse']); // Staff see all bookings
 
 $db = new Database();
 $message = '';
@@ -153,7 +153,7 @@ if ($can_view_own_bookings) {
 }
 
 // Get patients for booking
-$patients = $db->query("SELECT id, first_name, last_name, phone, patient_id FROM patients ORDER BY first_name")->fetchAll();
+    $patients = $db->query("SELECT id, first_name, last_name, phone, patient_id FROM patients WHERE hospital_id = 1 ORDER BY first_name")->fetchAll();
 
 // Get statistics based on role permissions
 $stats = [];
