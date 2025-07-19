@@ -153,12 +153,13 @@ echo "</div>";
 // Test 8: Main Pages
 echo "<div class='test-section info'>";
 echo "<h3>8. Main Pages Check</h3>";
-$main_pages = [
-    'index.php', 'dashboard.php', 'patients.php', 'doctors.php', 
-    'appointments.php', 'billing.php', 'pharmacy.php', 'laboratory.php',
-    'equipment.php', 'staff.php', 'reports.php', 'settings.php',
-    'patient-vitals.php', 'patient-conversion.php', 'lab-technician.php', 'attendance.php'
-];
+    $main_pages = [
+        'index.php', 'dashboard.php', 'patients.php', 'doctors.php', 
+        'appointments.php', 'billing.php', 'pharmacy.php', 'laboratory.php',
+        'equipment.php', 'staff.php', 'reports.php', 'settings.php',
+        'patient-vitals.php', 'patient-conversion.php', 'lab-technician.php', 'attendance.php',
+        'intern-management.php'
+    ];
 
 foreach ($main_pages as $page) {
     if (file_exists($page)) {

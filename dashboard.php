@@ -151,6 +151,7 @@ try {
                     <li><a href="equipment.php"><i class="fas fa-tools"></i> Equipment</a></li>
                     <li><a href="staff.php"><i class="fas fa-user-nurse"></i> Staff</a></li>
                     <li><a href="attendance.php"><i class="fas fa-clock"></i> Attendance</a></li>
+                    <li><a href="intern-management.php"><i class="fas fa-graduation-cap"></i> Intern Management</a></li>
                 <?php endif; ?>
                 
                 <?php if (in_array($user_role, ['admin', 'doctor', 'nurse', 'lab_technician', 'pharmacy_staff'])): ?>
