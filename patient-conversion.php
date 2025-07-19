@@ -240,7 +240,7 @@ try {
 $available_beds = [];
 try {
     $available_beds = $db->query(
-        "SELECT * FROM beds WHERE status = 'available' AND is_active = 1 ORDER BY bed_number"
+        "SELECT * FROM beds WHERE status = 'available' ORDER BY bed_number"
     )->fetchAll();
 } catch (Exception $e) {
     $available_beds = [];

@@ -18,69 +18,10 @@ if (!in_array($user_role, ['admin', 'nurse', 'receptionist', 'doctor', 'intern_d
 $db = new Database();
 $message = '';
 
-// Handle bed assignment
-if ($_POST && isset($_POST['action']) && $_POST['action'] === 'assign_bed') {
-    try {
-        $bed_id = $_POST['bed_id'];
-        $patient_id = $_POST['patient_id'];
-        $admission_date = $_POST['admission_date'];
-        $notes = $_POST['notes'];
-        
-        // Check if bed is available
-        $bed_status = $db->query("SELECT status FROM beds WHERE id = ?", [$bed_id])->fetch()['status'];
-        
-        if ($bed_status === 'available') {
-            $db->getConnection()->beginTransaction();
-            
-            // Update bed status
-            $db->query("UPDATE beds SET status = 'occupied', current_patient_id = ?, last_updated = NOW() WHERE id = ?", [$patient_id, $bed_id]);
-            
-            // Create bed assignment record
-            $assignment_sql = "INSERT INTO bed_assignments (bed_id, patient_id, assigned_date, status, notes, assigned_by) VALUES (?, ?, ?, 'active', ?, ?)";
-            $db->query($assignment_sql, [$bed_id, $patient_id, $admission_date, $notes, $_SESSION['user_id']]);
-            
-            $db->getConnection()->commit();
-            $message = "Bed assigned successfully!";
-        } else {
-            $message = "Error: Bed is not available for assignment.";
-        }
-    } catch (Exception $e) {
-        $db->getConnection()->rollBack();
-        $message = "Error: " . $e->getMessage();
-    }
-}
-
-// Handle bed discharge
-if ($_POST && isset($_POST['action']) && $_POST['action'] === 'discharge_bed') {
-    try {
-        $assignment_id = $_POST['assignment_id'];
-        $discharge_date = $_POST['discharge_date'];
-        $discharge_notes = $_POST['discharge_notes'];
-        
-        $db->getConnection()->beginTransaction();
-        
-        // Get assignment details
-        $assignment = $db->query("SELECT bed_id FROM bed_assignments WHERE id = ?", [$assignment_id])->fetch();
-        
-        // Update assignment record
-        $db->query("UPDATE bed_assignments SET status = 'discharged', discharge_date = ?, discharge_notes = ? WHERE id = ?", 
-                  [$discharge_date, $discharge_notes, $assignment_id]);
-        
-        // Update bed status
-        $db->query("UPDATE beds SET status = 'maintenance', current_patient_id = NULL, last_updated = NOW() WHERE id = ?", [$assignment['bed_id']]);
-        
-        $db->getConnection()->commit();
-        $message = "Patient discharged successfully! Bed marked for maintenance.";
-    } catch (Exception $e) {
-        $db->getConnection()->rollBack();
-        $message = "Error: " . $e->getMessage();
-    }
-}
-
 // Handle equipment addition
 if ($_POST && isset($_POST['action']) && $_POST['action'] === 'add_equipment') {
     try {
-        $equipment_sql = "INSERT INTO equipment (name, category, model, serial_number, manufacturer, purchase_date, warranty_expiry, cost, location, status, maintenance_schedule, specifications, notes) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'operational', ?, ?, ?)";
+        $equipment_sql = "INSERT INTO equipment (name, category, model, serial_number, manufacturer, purchase_date, warranty_expiry, cost, location, status, maintenance_schedule, specifications, notes, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'operational', ?, ?, ?, NOW())";
         
         $db->query($equipment_sql, [
             $_POST['name'],
@@ -88,112 +29,131 @@ if ($_POST && isset($_POST['action']) && $_POST['action'] === 'add_equipment') {
             $_POST['model'],
             $_POST['serial_number'],
             $_POST['manufacturer'],
-            $_POST['purchase_date'],
-            $_POST['warranty_expiry'],
-            $_POST['cost'],
+            $_POST['purchase_date'] ?: null,
+            $_POST['warranty_expiry'] ?: null,
+            $_POST['cost'] ?: 0,
             $_POST['location'],
-            $_POST['maintenance_schedule'],
-            $_POST['specifications'],
-            $_POST['notes']
+            $_POST['maintenance_schedule'] ?: 'monthly',
+            $_POST['specifications'] ?: '',
+            $_POST['notes'] ?: ''
         ]);
         
         $message = "Equipment added successfully!";
     } catch (Exception $e) {
-        $message = "Error: " . $e->getMessage();
+        $message = "Error adding equipment: " . $e->getMessage();
     }
 }
 
-// Handle equipment status update
-if ($_POST && isset($_POST['action']) && $_POST['action'] === 'update_equipment_status') {
+// Handle equipment update
+if ($_POST && isset($_POST['action']) && $_POST['action'] === 'update_equipment') {
     try {
-        $equipment_id = $_POST['equipment_id'];
-        $new_status = $_POST['new_status'];
-        $maintenance_notes = $_POST['maintenance_notes'];
+        $equipment_sql = "UPDATE equipment SET name = ?, category = ?, model = ?, serial_number = ?, manufacturer = ?, purchase_date = ?, warranty_expiry = ?, cost = ?, location = ?, status = ?, maintenance_schedule = ?, specifications = ?, notes = ?, updated_at = NOW() WHERE id = ?";
         
-        $db->query("UPDATE equipment SET status = ?, last_maintenance = NOW() WHERE id = ?", [$new_status, $equipment_id]);
+        $db->query($equipment_sql, [
+            $_POST['name'],
+            $_POST['category'],
+            $_POST['model'],
+            $_POST['serial_number'],
+            $_POST['manufacturer'],
+            $_POST['purchase_date'] ?: null,
+            $_POST['warranty_expiry'] ?: null,
+            $_POST['cost'] ?: 0,
+            $_POST['location'],
+            $_POST['status'],
+            $_POST['maintenance_schedule'],
+            $_POST['specifications'] ?: '',
+            $_POST['notes'] ?: '',
+            $_POST['equipment_id']
+        ]);
         
-        // Log maintenance record
-        $maintenance_sql = "INSERT INTO equipment_maintenance (equipment_id, maintenance_type, maintenance_date, notes, performed_by) VALUES (?, 'status_update', NOW(), ?, ?)";
-        $db->query($maintenance_sql, [$equipment_id, $maintenance_notes, $_SESSION['user_id']]);
-        
-        $message = "Equipment status updated successfully!";
+        $message = "Equipment updated successfully!";
     } catch (Exception $e) {
-        $message = "Error: " . $e->getMessage();
+        $message = "Error updating equipment: " . $e->getMessage();
     }
 }
 
-// Get current view
-$view = $_GET['view'] ?? 'beds';
-
-// Get beds with patient information
-$beds = $db->query("
-    SELECT b.*, 
-    ba.id as assignment_id,
-    ba.assigned_date,
-    ba.notes as assignment_notes,
-    CONCAT(p.first_name, ' ', p.last_name) as patient_name,
-    p.patient_id,
-    p.phone as patient_phone,
-    r.name as room_name,
-    d.name as department_name
-    FROM beds b
-    LEFT JOIN bed_assignments ba ON b.id = ba.bed_id AND ba.status = 'active'
-    LEFT JOIN patients p ON ba.patient_id = p.id
-    LEFT JOIN rooms r ON b.room_id = r.id
-    LEFT JOIN departments d ON r.department_id = d.id
-    ";
-    ORDER BY d.name, r.name, b.bed_number
-")->fetchAll();
-
-// Get equipment
-$equipment_search = $_GET['equipment_search'] ?? '';
-$equipment_filter = $_GET['equipment_filter'] ?? '';
-
-$equipment_sql = "SELECT e.*, 
-                  (SELECT COUNT(*) FROM equipment_maintenance WHERE equipment_id = e.id) as maintenance_count,
-                  (SELECT maintenance_date FROM equipment_maintenance WHERE equipment_id = e.id ORDER BY maintenance_date DESC LIMIT 1) as last_maintenance_date
-                  FROM equipment e
-                  ";
-
-$equipment_params = [];
-
-if ($equipment_search) {
-    $equipment_sql .= " AND (e.name LIKE ? OR e.model LIKE ? OR e.serial_number LIKE ?)";
-    $search_param = "%$equipment_search%";
-    $equipment_params = [$search_param, $search_param, $search_param];
+// Handle maintenance record
+if ($_POST && isset($_POST['action']) && $_POST['action'] === 'add_maintenance') {
+    try {
+        $maintenance_sql = "INSERT INTO equipment_maintenance (equipment_id, maintenance_type, maintenance_date, performed_by, cost, notes, next_maintenance_date, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, NOW())";
+        
+        $db->query($maintenance_sql, [
+            $_POST['equipment_id'],
+            $_POST['maintenance_type'],
+            $_POST['maintenance_date'],
+            $_SESSION['user_id'],
+            $_POST['cost'] ?: 0,
+            $_POST['notes'] ?: '',
+            $_POST['next_maintenance_date'] ?: null
+        ]);
+        
+        // Update equipment status if needed
+        if ($_POST['maintenance_type'] === 'repair') {
+            $db->query("UPDATE equipment SET status = 'operational', last_maintenance = ?, updated_at = NOW() WHERE id = ?", 
+                      [$_POST['maintenance_date'], $_POST['equipment_id']]);
+        }
+        
+        $message = "Maintenance record added successfully!";
+    } catch (Exception $e) {
+        $message = "Error adding maintenance record: " . $e->getMessage();
+    }
 }
 
-if ($equipment_filter) {
-    $equipment_sql .= " AND e.category = ?";
-    $equipment_params[] = $equipment_filter;
+// Get filters
+$category_filter = $_GET['category'] ?? '';
+$status_filter = $_GET['status'] ?? '';
+$location_filter = $_GET['location'] ?? '';
+$search = $_GET['search'] ?? '';
+
+// Build equipment query
+$sql = "SELECT e.*, 
+        (SELECT COUNT(*) FROM equipment_maintenance em WHERE em.equipment_id = e.id) as maintenance_count,
+        (SELECT MAX(maintenance_date) FROM equipment_maintenance em WHERE em.equipment_id = e.id) as last_maintenance_date
+        FROM equipment e WHERE 1=1";
+
+$params = [];
+
+if ($category_filter) {
+    $sql .= " AND e.category = ?";
+    $params[] = $category_filter;
 }
 
-$equipment_sql .= " ORDER BY e.name";
+if ($status_filter) {
+    $sql .= " AND e.status = ?";
+    $params[] = $status_filter;
+}
 
-$equipment = $db->query($equipment_sql, $equipment_params)->fetchAll();
+if ($location_filter) {
+    $sql .= " AND e.location LIKE ?";
+    $params[] = "%$location_filter%";
+}
 
-// Get patients for bed assignment
-$patients = $db->query("
-    SELECT p.id, p.patient_id, CONCAT(p.first_name, ' ', p.last_name) as full_name, p.phone
-    FROM patients p
-    LEFT JOIN bed_assignments ba ON p.id = ba.patient_id AND ba.status = 'active'
-    WHERE ba.id IS NULL
-    ORDER BY p.first_name, p.last_name
-")->fetchAll();
+if ($search) {
+    $sql .= " AND (e.name LIKE ? OR e.model LIKE ? OR e.serial_number LIKE ? OR e.manufacturer LIKE ?)";
+    $search_param = "%$search%";
+    $params = array_merge($params, [$search_param, $search_param, $search_param, $search_param]);
+}
 
-// Get equipment categories
-$equipment_categories = $db->query("SELECT DISTINCT category FROM equipment ORDER BY category")->fetchAll();
+$sql .= " ORDER BY e.name";
+
+$equipment_list = $db->query($sql, $params)->fetchAll();
+
+// Get categories for filter
+$categories = $db->query("SELECT DISTINCT category FROM equipment WHERE category IS NOT NULL ORDER BY category")->fetchAll();
+
+// Get locations for filter
+$locations = $db->query("SELECT DISTINCT location FROM equipment WHERE location IS NOT NULL ORDER BY location")->fetchAll();
 
 // Get statistics
 $stats = [];
 try {
-    $stats['total_beds'] = $db->query("SELECT COUNT(*) as count FROM beds")->fetch()['count'];
-    $stats['occupied_beds'] = $db->query("SELECT COUNT(*) as count FROM beds WHERE status = 'occupied'")->fetch()['count'];
-    $stats['available_beds'] = $db->query("SELECT COUNT(*) as count FROM beds WHERE status = 'available'")->fetch()['count'];
     $stats['total_equipment'] = $db->query("SELECT COUNT(*) as count FROM equipment")->fetch()['count'];
-    $stats['maintenance_due'] = $db->query("SELECT COUNT(*) as count FROM equipment WHERE status = 'maintenance'")->fetch()['count'];
+    $stats['operational'] = $db->query("SELECT COUNT(*) as count FROM equipment WHERE status = 'operational'")->fetch()['count'];
+    $stats['maintenance'] = $db->query("SELECT COUNT(*) as count FROM equipment WHERE status = 'maintenance'")->fetch()['count'];
+    $stats['out_of_order'] = $db->query("SELECT COUNT(*) as count FROM equipment WHERE status = 'out_of_order'")->fetch()['count'];
+    $stats['this_month_maintenance'] = $db->query("SELECT COUNT(*) as count FROM equipment_maintenance WHERE MONTH(maintenance_date) = MONTH(CURRENT_DATE) AND YEAR(maintenance_date) = YEAR(CURRENT_DATE)")->fetch()['count'];
 } catch (Exception $e) {
-    $stats = ['total_beds' => 0, 'occupied_beds' => 0, 'available_beds' => 0, 'total_equipment' => 0, 'maintenance_due' => 0];
+    $stats = ['total_equipment' => 0, 'operational' => 0, 'maintenance' => 0, 'out_of_order' => 0, 'this_month_maintenance' => 0];
 }
 ?>
 <!DOCTYPE html>
@@ -201,932 +161,515 @@ try {
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Equipment & Bed Management - Hospital CRM</title>
+    <title>Equipment Management - Hospital CRM</title>
+    <link rel="stylesheet" href="assets/css/style.css">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
     <style>
-        * {
-            margin: 0;
-            padding: 0;
-            box-sizing: border-box;
-        }
-        
-        body {
-            font-family: 'Poppins', sans-serif;
-            background: #f5f7fa;
-        }
-        
-        .container {
-            max-width: 1200px;
-            margin: 0 auto;
-            padding: 20px;
-        }
-        
-        .header {
-            background: white;
-            padding: 20px;
-            border-radius: 10px;
-            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
-            margin-bottom: 20px;
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-        }
-        
-        .header h1 {
-            color: #004685;
-            font-size: 24px;
-        }
-        
-        .btn {
-            padding: 10px 20px;
-            border: none;
-            border-radius: 5px;
-            cursor: pointer;
-            text-decoration: none;
-            display: inline-block;
-            font-size: 14px;
-            transition: background 0.3s;
-        }
-        
-        .btn-primary {
-            background: #004685;
-            color: white;
-        }
-        
-        .btn-primary:hover {
-            background: #003366;
-        }
-        
-        .btn-secondary {
-            background: #6c757d;
-            color: white;
-        }
-        
-        .btn-success {
-            background: #28a745;
-            color: white;
-        }
-        
-        .btn-warning {
-            background: #ffc107;
-            color: #333;
-        }
-        
-        .btn-danger {
-            background: #dc3545;
-            color: white;
-        }
-        
-        .btn-sm {
-            padding: 5px 10px;
-            font-size: 12px;
-        }
-        
-        .stats-grid {
-            display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-            gap: 20px;
-            margin-bottom: 20px;
-        }
-        
-        .stat-card {
-            background: white;
-            padding: 20px;
-            border-radius: 10px;
-            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
-            text-align: center;
-        }
-        
-        .stat-card h3 {
-            font-size: 24px;
-            color: #004685;
-            margin-bottom: 5px;
-        }
-        
-        .stat-card p {
-            color: #666;
-            font-size: 14px;
-        }
-        
-        .view-tabs {
-            background: white;
-            border-radius: 10px;
-            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
-            overflow: hidden;
-            margin-bottom: 20px;
-        }
-        
-        .tab-buttons {
-            display: flex;
-            background: #f8f9fa;
-            border-bottom: 1px solid #e1e1e1;
-        }
-        
-        .tab-button {
-            padding: 15px 30px;
-            background: none;
-            border: none;
-            cursor: pointer;
-            font-size: 16px;
-            font-weight: 500;
-            color: #666;
-            transition: all 0.3s;
-            flex: 1;
-            text-align: center;
-        }
-        
-        .tab-button.active {
-            background: white;
-            color: #004685;
-            border-bottom: 3px solid #004685;
-        }
-        
-        .bed-grid {
-            display: grid;
-            grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
-            gap: 20px;
-            padding: 25px;
-        }
-        
-        .bed-card {
-            background: white;
-            border-radius: 10px;
-            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
-            overflow: hidden;
-            transition: transform 0.3s;
-        }
-        
-        .bed-card:hover {
-            transform: translateY(-5px);
-        }
-        
-        .bed-header {
-            padding: 15px;
-            color: white;
-        }
-        
-        .bed-header.available {
-            background: linear-gradient(135deg, #28a745, #20c997);
-        }
-        
-        .bed-header.occupied {
-            background: linear-gradient(135deg, #dc3545, #ff6b6b);
-        }
-        
-        .bed-header.maintenance {
-            background: linear-gradient(135deg, #ffc107, #ffb74d);
-        }
-        
-        .bed-header.out-of-order {
-            background: linear-gradient(135deg, #6c757d, #adb5bd);
-        }
-        
-        .bed-header h4 {
-            font-size: 18px;
-            margin-bottom: 5px;
-        }
-        
-        .bed-header p {
-            opacity: 0.9;
-            font-size: 14px;
-        }
-        
-        .bed-body {
-            padding: 15px;
-        }
-        
-        .bed-info {
-            margin-bottom: 15px;
-        }
-        
-        .bed-info p {
-            margin-bottom: 5px;
-            font-size: 14px;
-        }
-        
-        .bed-info strong {
-            color: #004685;
-        }
-        
-        .bed-actions {
-            display: flex;
-            gap: 5px;
-            justify-content: center;
-        }
-        
-        .equipment-section {
-            padding: 25px;
-        }
-        
-        .equipment-filters {
-            background: #f8f9fa;
-            padding: 20px;
-            border-radius: 10px;
-            margin-bottom: 20px;
-        }
-        
-        .filter-form {
-            display: grid;
-            grid-template-columns: 2fr 1fr auto;
-            gap: 15px;
-            align-items: end;
-        }
-        
-        .form-group {
-            margin-bottom: 15px;
-        }
-        
-        .form-group label {
-            display: block;
-            margin-bottom: 5px;
-            color: #333;
-            font-weight: 500;
-            font-size: 14px;
-        }
-        
-        .form-group input, .form-group select, .form-group textarea {
-            width: 100%;
-            padding: 10px;
-            border: 2px solid #e1e1e1;
-            border-radius: 5px;
-            font-size: 14px;
-        }
-        
         .equipment-grid {
             display: grid;
             grid-template-columns: repeat(auto-fill, minmax(350px, 1fr));
-            gap: 20px;
+            gap: 1.5rem;
+            margin-top: 2rem;
         }
         
         .equipment-card {
-            background: white;
-            border-radius: 10px;
-            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+            background: var(--bg-card);
+            border-radius: var(--radius-xl);
+            padding: 1.5rem;
+            box-shadow: var(--shadow-sm);
+            border: 1px solid var(--border-color);
+            transition: var(--transition-all);
+            position: relative;
             overflow: hidden;
-            transition: transform 0.3s;
         }
         
         .equipment-card:hover {
-            transform: translateY(-5px);
+            box-shadow: var(--shadow-lg);
+            transform: translateY(-2px);
         }
         
-        .equipment-header {
-            background: linear-gradient(135deg, #007bff, #0056b3);
-            color: white;
-            padding: 15px;
+        .equipment-status {
+            position: absolute;
+            top: 1rem;
+            right: 1rem;
+            padding: 0.25rem 0.75rem;
+            border-radius: var(--radius-full);
+            font-size: 0.75rem;
+            font-weight: 600;
+            text-transform: uppercase;
         }
         
-        .equipment-header.maintenance {
-            background: linear-gradient(135deg, #ffc107, #e0a800);
+        .status-operational {
+            background: rgba(16, 185, 129, 0.1);
+            color: var(--success-color);
+            border: 1px solid rgba(16, 185, 129, 0.2);
         }
         
-        .equipment-header.out-of-order {
-            background: linear-gradient(135deg, #dc3545, #c82333);
+        .status-maintenance {
+            background: rgba(245, 158, 11, 0.1);
+            color: var(--warning-color);
+            border: 1px solid rgba(245, 158, 11, 0.2);
         }
         
-        .equipment-header h4 {
-            font-size: 16px;
-            margin-bottom: 5px;
+        .status-out_of_order {
+            background: rgba(239, 68, 68, 0.1);
+            color: var(--danger-color);
+            border: 1px solid rgba(239, 68, 68, 0.2);
         }
         
-        .equipment-header p {
-            opacity: 0.9;
-            font-size: 13px;
+        .equipment-category {
+            display: inline-block;
+            background: var(--primary-color);
+            color: var(--text-white);
+            padding: 0.25rem 0.75rem;
+            border-radius: var(--radius-full);
+            font-size: 0.75rem;
+            font-weight: 600;
+            margin-bottom: 1rem;
         }
         
-        .equipment-body {
-            padding: 15px;
+        .equipment-details {
+            margin-top: 1rem;
         }
         
-        .equipment-info {
-            display: grid;
-            grid-template-columns: 1fr 1fr;
-            gap: 10px;
-            margin-bottom: 15px;
-        }
-        
-        .info-item {
-            display: flex;
-            flex-direction: column;
-        }
-        
-        .info-item label {
-            font-size: 11px;
-            color: #666;
-            margin-bottom: 2px;
-        }
-        
-        .info-item span {
-            font-weight: 500;
-            color: #333;
-            font-size: 13px;
-        }
-        
-        .equipment-actions {
-            display: flex;
-            gap: 5px;
-            justify-content: center;
-        }
-        
-        .modal {
-            display: none;
-            position: fixed;
-            top: 0;
-            left: 0;
-            width: 100%;
-            height: 100%;
-            background: rgba(0,0,0,0.5);
-            z-index: 1000;
-        }
-        
-        .modal-content {
-            background: white;
-            margin: 20px auto;
-            padding: 0;
-            border-radius: 10px;
-            width: 90%;
-            max-width: 700px;
-            max-height: 90vh;
-            overflow-y: auto;
-        }
-        
-        .modal-header {
-            padding: 20px;
-            border-bottom: 1px solid #e1e1e1;
+        .detail-row {
             display: flex;
             justify-content: space-between;
-            align-items: center;
+            margin-bottom: 0.5rem;
+            font-size: 0.875rem;
         }
         
-        .modal-header h2 {
-            color: #004685;
-            margin: 0;
+        .detail-label {
+            color: var(--text-secondary);
+            font-weight: 500;
         }
         
-        .close {
-            background: none;
-            border: none;
-            font-size: 24px;
-            cursor: pointer;
-            color: #666;
+        .detail-value {
+            color: var(--text-primary);
+            font-weight: 600;
         }
         
-        .modal-body {
-            padding: 20px;
+        .filters-panel {
+            background: var(--bg-card);
+            border-radius: var(--radius-xl);
+            padding: 1.5rem;
+            margin-bottom: 2rem;
+            box-shadow: var(--shadow-sm);
+            border: 1px solid var(--border-color);
         }
         
-        .form-row {
+        .filter-grid {
             display: grid;
-            grid-template-columns: 1fr 1fr;
-            gap: 15px;
-            margin-bottom: 15px;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 1rem;
+            align-items: end;
         }
         
-        .alert {
-            padding: 12px;
-            border-radius: 5px;
-            margin-bottom: 20px;
+        .maintenance-indicator {
+            margin-top: 1rem;
+            padding: 0.75rem;
+            border-radius: var(--radius-lg);
+            background: rgba(59, 130, 246, 0.05);
+            border: 1px solid rgba(59, 130, 246, 0.1);
         }
         
-        .alert-success {
-            background: #d4edda;
-            color: #155724;
-            border: 1px solid #c3e6cb;
+        .maintenance-overdue {
+            background: rgba(239, 68, 68, 0.05);
+            border-color: rgba(239, 68, 68, 0.1);
         }
         
-        .alert-danger {
-            background: #f8d7da;
-            color: #721c24;
-            border: 1px solid #f5c6cb;
-        }
-        
-        @media (max-width: 768px) {
-            .filter-form {
-                grid-template-columns: 1fr;
-            }
-            
-            .bed-grid, .equipment-grid {
-                grid-template-columns: 1fr;
-            }
-            
-            .form-row {
-                grid-template-columns: 1fr;
-            }
-            
-            .equipment-info {
-                grid-template-columns: 1fr;
-            }
-            
-            .header {
-                flex-direction: column;
-                gap: 15px;
-                text-align: center;
-            }
-            
-            .tab-buttons {
-                flex-direction: column;
-            }
+        .maintenance-due-soon {
+            background: rgba(245, 158, 11, 0.05);
+            border-color: rgba(245, 158, 11, 0.1);
         }
     </style>
 </head>
 <body>
-    <div class="container">
-        <div class="header">
-            <h1>Equipment & Bed Management</h1>
-            <div>
-                <a href="dashboard.php" class="btn btn-secondary">← Back to Dashboard</a>
-                <?php if ($user_role === 'admin'): ?>
-                    <button onclick="openEquipmentModal()" class="btn btn-primary">+ Add Equipment</button>
+    <div class="dashboard-container">
+        <!-- Sidebar -->
+        <aside class="sidebar" id="sidebar">
+            <div class="sidebar-header">
+                <h2><i class="fas fa-hospital"></i> Hospital CRM</h2>
+                <p><?php echo htmlspecialchars($_SESSION['role_display']); ?></p>
+            </div>
+            <ul class="sidebar-menu">
+                <li><a href="dashboard.php"><i class="fas fa-home"></i> Dashboard</a></li>
+                <li><a href="equipment.php" class="active"><i class="fas fa-tools"></i> Equipment</a></li>
+                <li><a href="beds.php"><i class="fas fa-bed"></i> Bed Management</a></li>
+                <li><a href="patient-monitoring.php"><i class="fas fa-user-injured"></i> Patient Monitoring</a></li>
+                <li><a href="ambulance-management.php"><i class="fas fa-ambulance"></i> Ambulance</a></li>
+                <li><a href="patients.php"><i class="fas fa-users"></i> Patients</a></li>
+                <li><a href="profile.php"><i class="fas fa-user"></i> Profile</a></li>
+            </ul>
+        </aside>
+
+        <!-- Main Content -->
+        <main class="main-content">
+            <!-- Header -->
+            <div class="dashboard-header">
+                <div class="header-left">
+                    <h1><i class="fas fa-tools"></i> Equipment Management</h1>
+                    <p>Manage hospital equipment and maintenance</p>
+                </div>
+                <div class="header-right">
+                    <div class="theme-controls">
+                        <button class="theme-toggle" id="themeToggle" title="Toggle Dark Mode">
+                            <i class="fas fa-moon"></i>
+                        </button>
+                        <button class="color-toggle" id="colorToggle" title="Change Colors">
+                            <i class="fas fa-palette"></i>
+                        </button>
+                    </div>
+                    <div class="user-info">
+                        <i class="fas fa-user-circle"></i>
+                        <span><?php echo htmlspecialchars($_SESSION['role_display']); ?></span>
+                    </div>
+                    <a href="logout.php" class="btn btn-danger btn-sm">
+                        <i class="fas fa-sign-out-alt"></i> Logout
+                    </a>
+                </div>
+            </div>
+
+            <?php if ($message): ?>
+                <div class="alert alert-success animate-fade-in">
+                    <?php echo htmlspecialchars($message); ?>
+                </div>
+            <?php endif; ?>
+
+            <!-- Statistics -->
+            <div class="stats-grid">
+                <div class="stat-card animate-fade-in">
+                    <h3><?php echo number_format($stats['total_equipment']); ?></h3>
+                    <p>Total Equipment</p>
+                </div>
+                <div class="stat-card animate-fade-in" style="animation-delay: 0.1s;">
+                    <h3><?php echo number_format($stats['operational']); ?></h3>
+                    <p>Operational</p>
+                </div>
+                <div class="stat-card animate-fade-in" style="animation-delay: 0.2s;">
+                    <h3><?php echo number_format($stats['maintenance']); ?></h3>
+                    <p>Under Maintenance</p>
+                </div>
+                <div class="stat-card animate-fade-in" style="animation-delay: 0.3s;">
+                    <h3><?php echo number_format($stats['out_of_order']); ?></h3>
+                    <p>Out of Order</p>
+                </div>
+                <div class="stat-card animate-fade-in" style="animation-delay: 0.4s;">
+                    <h3><?php echo number_format($stats['this_month_maintenance']); ?></h3>
+                    <p>This Month Maintenance</p>
+                </div>
+            </div>
+
+            <!-- Filters -->
+            <div class="filters-panel">
+                <form method="GET" class="filter-grid">
+                    <div class="form-group">
+                        <label for="search">Search Equipment</label>
+                        <input type="text" id="search" name="search" value="<?php echo htmlspecialchars($search); ?>" placeholder="Name, model, serial number..." class="form-control">
+                    </div>
+                    <div class="form-group">
+                        <label for="category">Category</label>
+                        <select id="category" name="category" class="form-control">
+                            <option value="">All Categories</option>
+                            <?php foreach ($categories as $cat): ?>
+                                <option value="<?php echo htmlspecialchars($cat['category']); ?>" <?php echo $category_filter === $cat['category'] ? 'selected' : ''; ?>>
+                                    <?php echo htmlspecialchars(ucfirst($cat['category'])); ?>
+                                </option>
+                            <?php endforeach; ?>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label for="status">Status</label>
+                        <select id="status" name="status" class="form-control">
+                            <option value="">All Status</option>
+                            <option value="operational" <?php echo $status_filter === 'operational' ? 'selected' : ''; ?>>Operational</option>
+                            <option value="maintenance" <?php echo $status_filter === 'maintenance' ? 'selected' : ''; ?>>Maintenance</option>
+                            <option value="out_of_order" <?php echo $status_filter === 'out_of_order' ? 'selected' : ''; ?>>Out of Order</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label for="location">Location</label>
+                        <select id="location" name="location" class="form-control">
+                            <option value="">All Locations</option>
+                            <?php foreach ($locations as $loc): ?>
+                                <option value="<?php echo htmlspecialchars($loc['location']); ?>" <?php echo $location_filter === $loc['location'] ? 'selected' : ''; ?>>
+                                    <?php echo htmlspecialchars($loc['location']); ?>
+                                </option>
+                            <?php endforeach; ?>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <button type="submit" class="btn btn-primary w-full">
+                            <i class="fas fa-search"></i> Filter
+                        </button>
+                    </div>
+                </form>
+            </div>
+
+            <!-- Action Buttons -->
+            <div class="d-flex gap-4 mb-6">
+                <?php if (in_array($user_role, ['admin', 'nurse', 'receptionist'])): ?>
+                    <button class="btn btn-primary" onclick="showAddEquipmentModal()">
+                        <i class="fas fa-plus"></i> Add Equipment
+                    </button>
                 <?php endif; ?>
             </div>
-        </div>
-        
-        <?php if ($message): ?>
-            <div class="alert <?php echo strpos($message, 'Error') === 0 ? 'alert-danger' : 'alert-success'; ?>">
-                <?php echo htmlspecialchars($message); ?>
-            </div>
-        <?php endif; ?>
-        
-        <div class="stats-grid">
-            <div class="stat-card">
-                <h3><?php echo number_format($stats['total_beds']); ?></h3>
-                <p>Total Beds</p>
-            </div>
-            <div class="stat-card">
-                <h3><?php echo number_format($stats['occupied_beds']); ?></h3>
-                <p>Occupied Beds</p>
-            </div>
-            <div class="stat-card">
-                <h3><?php echo number_format($stats['available_beds']); ?></h3>
-                <p>Available Beds</p>
-            </div>
-            <div class="stat-card">
-                <h3><?php echo number_format($stats['total_equipment']); ?></h3>
-                <p>Total Equipment</p>
-            </div>
-            <div class="stat-card">
-                <h3><?php echo number_format($stats['maintenance_due']); ?></h3>
-                <p>Maintenance Due</p>
-            </div>
-        </div>
-        
-        <div class="view-tabs">
-            <div class="tab-buttons">
-                <a href="?view=beds" class="tab-button <?php echo $view === 'beds' ? 'active' : ''; ?>">
-                    Bed Management
-                </a>
-                <a href="?view=equipment" class="tab-button <?php echo $view === 'equipment' ? 'active' : ''; ?>">
-                    Equipment Management
-                </a>
-            </div>
-            
-            <?php if ($view === 'beds'): ?>
-            <div class="bed-grid">
-                <?php if (empty($beds)): ?>
-                    <div style="grid-column: 1 / -1; text-align: center; padding: 50px; color: #666;">
-                        <h3>No beds found</h3>
-                        <p>Contact administrator to set up bed configuration.</p>
+
+            <!-- Equipment Grid -->
+            <div class="equipment-grid">
+                <?php if (empty($equipment_list)): ?>
+                    <div class="card text-center" style="grid-column: 1 / -1;">
+                        <div class="card-body">
+                            <i class="fas fa-tools" style="font-size: 4rem; opacity: 0.3; margin-bottom: 1rem;"></i>
+                            <h3>No equipment found</h3>
+                            <p>Try adjusting your filters or add new equipment</p>
+                        </div>
                     </div>
                 <?php else: ?>
-                    <?php foreach ($beds as $bed): ?>
-                        <div class="bed-card">
-                            <div class="bed-header <?php echo $bed['status']; ?>">
-                                <h4>Bed <?php echo htmlspecialchars($bed['bed_number']); ?></h4>
-                                <p><?php echo htmlspecialchars($bed['room_name'] ?? 'Room ' . $bed['room_id']); ?> - <?php echo htmlspecialchars($bed['department_name'] ?? 'General Ward'); ?></p>
+                    <?php foreach ($equipment_list as $equipment): ?>
+                        <div class="equipment-card animate-fade-in">
+                            <div class="equipment-status status-<?php echo str_replace(' ', '_', $equipment['status']); ?>">
+                                <?php echo ucfirst(str_replace('_', ' ', $equipment['status'])); ?>
                             </div>
                             
-                            <div class="bed-body">
-                                <div class="bed-info">
-                                    <p><strong>Status:</strong> <?php echo ucfirst(str_replace('_', ' ', $bed['status'])); ?></p>
-                                    <p><strong>Type:</strong> <?php echo ucfirst($bed['bed_type']); ?></p>
-                                    
-                                    <?php if ($bed['status'] === 'occupied' && $bed['patient_name']): ?>
-                                        <p><strong>Patient:</strong> <?php echo htmlspecialchars($bed['patient_name']); ?></p>
-                                        <p><strong>Patient ID:</strong> <?php echo htmlspecialchars($bed['patient_id']); ?></p>
-                                        <p><strong>Admitted:</strong> <?php echo date('M d, Y', strtotime($bed['assigned_date'])); ?></p>
-                                        <?php if ($bed['patient_phone']): ?>
-                                            <p><strong>Phone:</strong> <?php echo htmlspecialchars($bed['patient_phone']); ?></p>
-                                        <?php endif; ?>
-                                        <?php if ($bed['assignment_notes']): ?>
-                                            <p><strong>Notes:</strong> <?php echo htmlspecialchars(substr($bed['assignment_notes'], 0, 50)); ?>
-                                               <?php if (strlen($bed['assignment_notes']) > 50): ?>...<?php endif; ?></p>
-                                        <?php endif; ?>
-                                    <?php endif; ?>
+                            <div class="equipment-category">
+                                <?php echo htmlspecialchars(ucfirst($equipment['category'] ?? 'General')); ?>
+                            </div>
+                            
+                            <h4><?php echo htmlspecialchars($equipment['name']); ?></h4>
+                            <p class="text-muted mb-3"><?php echo htmlspecialchars($equipment['model']); ?></p>
+                            
+                            <div class="equipment-details">
+                                <div class="detail-row">
+                                    <span class="detail-label">Serial Number:</span>
+                                    <span class="detail-value"><?php echo htmlspecialchars($equipment['serial_number'] ?? 'N/A'); ?></span>
                                 </div>
-                                
-                                <div class="bed-actions">
-                                    <?php if ($bed['status'] === 'available'): ?>
-                                        <button onclick="openBedAssignModal(<?php echo $bed['id']; ?>, '<?php echo htmlspecialchars($bed['bed_number']); ?>', '<?php echo htmlspecialchars($bed['room_name']); ?>')" 
-                                                class="btn btn-success btn-sm">Assign Patient</button>
-                                    <?php elseif ($bed['status'] === 'occupied'): ?>
-                                        <button onclick="openDischargeModal(<?php echo $bed['assignment_id']; ?>, '<?php echo htmlspecialchars($bed['patient_name']); ?>')" 
-                                                class="btn btn-warning btn-sm">Discharge</button>
-                                    <?php elseif ($bed['status'] === 'maintenance'): ?>
-                                        <form method="POST" style="display: inline;">
-                                            <input type="hidden" name="action" value="update_bed_status">
-                                            <input type="hidden" name="bed_id" value="<?php echo $bed['id']; ?>">
-                                            <input type="hidden" name="new_status" value="available">
-                                            <button type="submit" class="btn btn-success btn-sm">Mark Available</button>
-                                        </form>
-                                    <?php endif; ?>
+                                <div class="detail-row">
+                                    <span class="detail-label">Manufacturer:</span>
+                                    <span class="detail-value"><?php echo htmlspecialchars($equipment['manufacturer'] ?? 'N/A'); ?></span>
                                 </div>
+                                <div class="detail-row">
+                                    <span class="detail-label">Location:</span>
+                                    <span class="detail-value"><?php echo htmlspecialchars($equipment['location'] ?? 'N/A'); ?></span>
+                                </div>
+                                <div class="detail-row">
+                                    <span class="detail-label">Purchase Date:</span>
+                                    <span class="detail-value"><?php echo $equipment['purchase_date'] ? date('M d, Y', strtotime($equipment['purchase_date'])) : 'N/A'; ?></span>
+                                </div>
+                                <div class="detail-row">
+                                    <span class="detail-label">Maintenance Count:</span>
+                                    <span class="detail-value"><?php echo $equipment['maintenance_count']; ?> times</span>
+                                </div>
+                            </div>
+                            
+                            <?php if ($equipment['last_maintenance_date']): ?>
+                                <div class="maintenance-indicator">
+                                    <small><strong>Last Maintenance:</strong> <?php echo date('M d, Y', strtotime($equipment['last_maintenance_date'])); ?></small>
+                                </div>
+                            <?php endif; ?>
+                            
+                            <div class="d-flex gap-2 mt-4">
+                                <button class="btn btn-outline btn-sm" onclick="viewEquipmentDetails(<?php echo $equipment['id']; ?>)">
+                                    <i class="fas fa-eye"></i> View
+                                </button>
+                                <?php if (in_array($user_role, ['admin', 'nurse'])): ?>
+                                    <button class="btn btn-primary btn-sm" onclick="editEquipment(<?php echo $equipment['id']; ?>)">
+                                        <i class="fas fa-edit"></i> Edit
+                                    </button>
+                                    <button class="btn btn-warning btn-sm" onclick="addMaintenance(<?php echo $equipment['id']; ?>)">
+                                        <i class="fas fa-wrench"></i> Maintenance
+                                    </button>
+                                <?php endif; ?>
                             </div>
                         </div>
                     <?php endforeach; ?>
                 <?php endif; ?>
             </div>
-            
-            <?php else: ?>
-            <div class="equipment-section">
-                <div class="equipment-filters">
-                    <form method="GET" class="filter-form">
-                        <input type="hidden" name="view" value="equipment">
-                        <div class="form-group">
-                            <label for="equipment_search">Search Equipment</label>
-                            <input type="text" name="equipment_search" id="equipment_search" 
-                                   placeholder="Search by name, model, serial number..." 
-                                   value="<?php echo htmlspecialchars($equipment_search); ?>">
-                        </div>
-                        
-                        <div class="form-group">
-                            <label for="equipment_filter">Category</label>
-                            <select name="equipment_filter" id="equipment_filter">
-                                <option value="">All Categories</option>
-                                <?php foreach ($equipment_categories as $cat): ?>
-                                    <option value="<?php echo htmlspecialchars($cat['category']); ?>" 
-                                            <?php echo $equipment_filter === $cat['category'] ? 'selected' : ''; ?>>
-                                        <?php echo htmlspecialchars($cat['category']); ?>
-                                    </option>
-                                <?php endforeach; ?>
-                            </select>
-                        </div>
-                        
-                        <div class="form-group">
-                            <button type="submit" class="btn btn-primary">Filter</button>
-                            <a href="?view=equipment" class="btn btn-secondary">Clear</a>
-                        </div>
-                    </form>
-                </div>
-                
-                <div class="equipment-grid">
-                    <?php if (empty($equipment)): ?>
-                        <div style="grid-column: 1 / -1; text-align: center; padding: 50px; color: #666;">
-                            <h3>No equipment found</h3>
-                            <p>Add your first equipment to get started.</p>
-                        </div>
-                    <?php else: ?>
-                        <?php foreach ($equipment as $item): ?>
-                            <div class="equipment-card">
-                                <div class="equipment-header <?php echo $item['status']; ?>">
-                                    <h4><?php echo htmlspecialchars($item['name']); ?></h4>
-                                    <p><?php echo htmlspecialchars($item['category']); ?> - <?php echo htmlspecialchars($item['model']); ?></p>
-                                </div>
-                                
-                                <div class="equipment-body">
-                                    <div class="equipment-info">
-                                        <div class="info-item">
-                                            <label>Serial Number</label>
-                                            <span><?php echo htmlspecialchars($item['serial_number']); ?></span>
-                                        </div>
-                                        
-                                        <div class="info-item">
-                                            <label>Manufacturer</label>
-                                            <span><?php echo htmlspecialchars($item['manufacturer']); ?></span>
-                                        </div>
-                                        
-                                        <div class="info-item">
-                                            <label>Location</label>
-                                            <span><?php echo htmlspecialchars($item['location']); ?></span>
-                                        </div>
-                                        
-                                        <div class="info-item">
-                                            <label>Status</label>
-                                            <span><?php echo ucfirst(str_replace('_', ' ', $item['status'])); ?></span>
-                                        </div>
-                                        
-                                        <div class="info-item">
-                                            <label>Purchase Date</label>
-                                            <span><?php echo date('M Y', strtotime($item['purchase_date'])); ?></span>
-                                        </div>
-                                        
-                                        <div class="info-item">
-                                            <label>Cost</label>
-                                            <span>₹<?php echo number_format($item['cost'], 2); ?></span>
-                                        </div>
-                                    </div>
-                                    
-                                    <?php if ($item['warranty_expiry'] && strtotime($item['warranty_expiry']) > time()): ?>
-                                        <p style="text-align: center; margin-bottom: 15px; padding: 5px; background: #d4edda; color: #155724; border-radius: 5px; font-size: 12px;">
-                                            Warranty valid until <?php echo date('M Y', strtotime($item['warranty_expiry'])); ?>
-                                        </p>
-                                    <?php endif; ?>
-                                    
-                                    <div class="equipment-actions">
-                                        <?php if ($user_role === 'admin'): ?>
-                                            <button onclick="openMaintenanceModal(<?php echo $item['id']; ?>, '<?php echo htmlspecialchars($item['name']); ?>', '<?php echo $item['status']; ?>')" 
-                                                    class="btn btn-warning btn-sm">Maintenance</button>
-                                        <?php endif; ?>
-                                        <button onclick="viewEquipment(<?php echo $item['id']; ?>)" class="btn btn-primary btn-sm">View Details</button>
-                                    </div>
-                                </div>
-                            </div>
-                        <?php endforeach; ?>
-                    <?php endif; ?>
-                </div>
-            </div>
-            <?php endif; ?>
-        </div>
+        </main>
     </div>
-    
-    <!-- Bed Assignment Modal -->
-    <div id="bedAssignModal" class="modal">
-        <div class="modal-content">
-            <div class="modal-header">
-                <h2>Assign Bed to Patient</h2>
-                <button type="button" class="close" onclick="closeBedAssignModal()">&times;</button>
-            </div>
-            <div class="modal-body">
-                <form method="POST">
-                    <input type="hidden" name="action" value="assign_bed">
-                    <input type="hidden" name="bed_id" id="assign_bed_id">
-                    
-                    <div class="form-group">
-                        <label>Bed: <strong id="assign_bed_info"></strong></label>
-                    </div>
-                    
-                    <div class="form-group">
-                        <label for="patient_id">Patient *</label>
-                        <select id="patient_id" name="patient_id" required>
-                            <option value="">Select Patient</option>
-                            <?php foreach ($patients as $patient): ?>
-                                <option value="<?php echo $patient['id']; ?>">
-                                    <?php echo htmlspecialchars($patient['full_name'] . ' (' . $patient['patient_id'] . ') - ' . $patient['phone']); ?>
-                                </option>
-                            <?php endforeach; ?>
-                        </select>
-                    </div>
-                    
-                    <div class="form-group">
-                        <label for="admission_date">Admission Date *</label>
-                        <input type="datetime-local" id="admission_date" name="admission_date" value="<?php echo date('Y-m-d\TH:i'); ?>" required>
-                    </div>
-                    
-                    <div class="form-group">
-                        <label for="assign_notes">Notes</label>
-                        <textarea id="assign_notes" name="notes" rows="3" placeholder="Admission notes or special requirements..."></textarea>
-                    </div>
-                    
-                    <div style="text-align: right; margin-top: 20px;">
-                        <button type="button" onclick="closeBedAssignModal()" class="btn btn-secondary">Cancel</button>
-                        <button type="submit" class="btn btn-success">Assign Bed</button>
-                    </div>
-                </form>
-            </div>
-        </div>
-    </div>
-    
-    <!-- Discharge Modal -->
-    <div id="dischargeModal" class="modal">
-        <div class="modal-content">
-            <div class="modal-header">
-                <h2>Discharge Patient</h2>
-                <button type="button" class="close" onclick="closeDischargeModal()">&times;</button>
-            </div>
-            <div class="modal-body">
-                <form method="POST">
-                    <input type="hidden" name="action" value="discharge_bed">
-                    <input type="hidden" name="assignment_id" id="discharge_assignment_id">
-                    
-                    <div class="form-group">
-                        <label>Patient: <strong id="discharge_patient_name"></strong></label>
-                    </div>
-                    
-                    <div class="form-group">
-                        <label for="discharge_date">Discharge Date & Time *</label>
-                        <input type="datetime-local" id="discharge_date" name="discharge_date" value="<?php echo date('Y-m-d\TH:i'); ?>" required>
-                    </div>
-                    
-                    <div class="form-group">
-                        <label for="discharge_notes">Discharge Notes</label>
-                        <textarea id="discharge_notes" name="discharge_notes" rows="4" placeholder="Discharge summary, follow-up instructions, etc."></textarea>
-                    </div>
-                    
-                    <div style="text-align: right; margin-top: 20px;">
-                        <button type="button" onclick="closeDischargeModal()" class="btn btn-secondary">Cancel</button>
-                        <button type="submit" class="btn btn-warning">Discharge Patient</button>
-                    </div>
-                </form>
-            </div>
-        </div>
-    </div>
-    
+
     <!-- Add Equipment Modal -->
-    <div id="equipmentModal" class="modal">
-        <div class="modal-content">
-            <div class="modal-header">
-                <h2>Add New Equipment</h2>
-                <button type="button" class="close" onclick="closeEquipmentModal()">&times;</button>
-            </div>
-            <div class="modal-body">
+    <div class="modal" id="addEquipmentModal">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">Add New Equipment</h5>
+                    <button type="button" class="btn-close" onclick="closeModal('addEquipmentModal')">&times;</button>
+                </div>
                 <form method="POST">
-                    <input type="hidden" name="action" value="add_equipment">
-                    
-                    <div class="form-row">
+                    <div class="modal-body">
+                        <input type="hidden" name="action" value="add_equipment">
+                        
                         <div class="form-group">
-                            <label for="equipment_name">Equipment Name *</label>
-                            <input type="text" id="equipment_name" name="name" required>
+                            <label for="name">Equipment Name</label>
+                            <input type="text" name="name" id="name" class="form-control" required>
                         </div>
+                        
                         <div class="form-group">
-                            <label for="equipment_category">Category *</label>
-                            <select id="equipment_category" name="category" required>
+                            <label for="category">Category</label>
+                            <select name="category" id="category" class="form-control" required>
                                 <option value="">Select Category</option>
-                                <option value="Medical Devices">Medical Devices</option>
-                                <option value="Diagnostic Equipment">Diagnostic Equipment</option>
-                                <option value="Surgical Instruments">Surgical Instruments</option>
-                                <option value="Monitoring Equipment">Monitoring Equipment</option>
-                                <option value="Life Support">Life Support</option>
-                                <option value="Laboratory Equipment">Laboratory Equipment</option>
-                                <option value="Radiology Equipment">Radiology Equipment</option>
-                                <option value="Furniture">Furniture</option>
-                                <option value="IT Equipment">IT Equipment</option>
-                                <option value="Others">Others</option>
+                                <option value="medical">Medical Equipment</option>
+                                <option value="surgical">Surgical Equipment</option>
+                                <option value="diagnostic">Diagnostic Equipment</option>
+                                <option value="laboratory">Laboratory Equipment</option>
+                                <option value="emergency">Emergency Equipment</option>
+                                <option value="it">IT Equipment</option>
+                                <option value="furniture">Furniture</option>
+                                <option value="other">Other</option>
                             </select>
                         </div>
-                    </div>
-                    
-                    <div class="form-row">
+                        
                         <div class="form-group">
-                            <label for="equipment_model">Model *</label>
-                            <input type="text" id="equipment_model" name="model" required>
+                            <label for="model">Model</label>
+                            <input type="text" name="model" id="model" class="form-control">
                         </div>
+                        
                         <div class="form-group">
                             <label for="serial_number">Serial Number</label>
-                            <input type="text" id="serial_number" name="serial_number">
+                            <input type="text" name="serial_number" id="serial_number" class="form-control">
                         </div>
-                    </div>
-                    
-                    <div class="form-row">
+                        
                         <div class="form-group">
-                            <label for="manufacturer">Manufacturer *</label>
-                            <input type="text" id="manufacturer" name="manufacturer" required>
+                            <label for="manufacturer">Manufacturer</label>
+                            <input type="text" name="manufacturer" id="manufacturer" class="form-control">
                         </div>
-                        <div class="form-group">
-                            <label for="location">Location *</label>
-                            <input type="text" id="location" name="location" placeholder="e.g., ICU, Ward 1, Lab" required>
-                        </div>
-                    </div>
-                    
-                    <div class="form-row">
+                        
                         <div class="form-group">
                             <label for="purchase_date">Purchase Date</label>
-                            <input type="date" id="purchase_date" name="purchase_date">
+                            <input type="date" name="purchase_date" id="purchase_date" class="form-control">
                         </div>
+                        
                         <div class="form-group">
                             <label for="warranty_expiry">Warranty Expiry</label>
-                            <input type="date" id="warranty_expiry" name="warranty_expiry">
+                            <input type="date" name="warranty_expiry" id="warranty_expiry" class="form-control">
                         </div>
-                    </div>
-                    
-                    <div class="form-row">
+                        
                         <div class="form-group">
-                            <label for="cost">Cost (₹)</label>
-                            <input type="number" id="cost" name="cost" min="0" step="0.01">
+                            <label for="cost">Cost</label>
+                            <input type="number" name="cost" id="cost" class="form-control" step="0.01">
                         </div>
+                        
+                        <div class="form-group">
+                            <label for="location">Location</label>
+                            <input type="text" name="location" id="location" class="form-control" required>
+                        </div>
+                        
                         <div class="form-group">
                             <label for="maintenance_schedule">Maintenance Schedule</label>
-                            <select id="maintenance_schedule" name="maintenance_schedule">
-                                <option value="">Select Schedule</option>
+                            <select name="maintenance_schedule" id="maintenance_schedule" class="form-control">
                                 <option value="weekly">Weekly</option>
-                                <option value="monthly">Monthly</option>
+                                <option value="monthly" selected>Monthly</option>
                                 <option value="quarterly">Quarterly</option>
-                                <option value="bi-annually">Bi-annually</option>
                                 <option value="annually">Annually</option>
-                                <option value="as-needed">As Needed</option>
+                                <option value="as_needed">As Needed</option>
                             </select>
                         </div>
+                        
+                        <div class="form-group">
+                            <label for="specifications">Specifications</label>
+                            <textarea name="specifications" id="specifications" class="form-control" rows="3"></textarea>
+                        </div>
+                        
+                        <div class="form-group">
+                            <label for="notes">Notes</label>
+                            <textarea name="notes" id="notes" class="form-control" rows="3"></textarea>
+                        </div>
                     </div>
-                    
-                    <div class="form-group">
-                        <label for="specifications">Specifications</label>
-                        <textarea id="specifications" name="specifications" rows="3" placeholder="Technical specifications, features, etc."></textarea>
-                    </div>
-                    
-                    <div class="form-group">
-                        <label for="equipment_notes">Notes</label>
-                        <textarea id="equipment_notes" name="notes" rows="2" placeholder="Additional notes..."></textarea>
-                    </div>
-                    
-                    <div style="text-align: right; margin-top: 20px;">
-                        <button type="button" onclick="closeEquipmentModal()" class="btn btn-secondary">Cancel</button>
+                    <div class="modal-footer">
+                        <button type="button" class="btn btn-secondary" onclick="closeModal('addEquipmentModal')">Cancel</button>
                         <button type="submit" class="btn btn-primary">Add Equipment</button>
                     </div>
                 </form>
             </div>
         </div>
     </div>
-    
-    <!-- Equipment Maintenance Modal -->
-    <div id="maintenanceModal" class="modal">
-        <div class="modal-content">
-            <div class="modal-header">
-                <h2>Equipment Maintenance</h2>
-                <button type="button" class="close" onclick="closeMaintenanceModal()">&times;</button>
-            </div>
-            <div class="modal-body">
-                <form method="POST">
-                    <input type="hidden" name="action" value="update_equipment_status">
-                    <input type="hidden" name="equipment_id" id="maintenance_equipment_id">
-                    
-                    <div class="form-group">
-                        <label>Equipment: <strong id="maintenance_equipment_name"></strong></label>
-                    </div>
-                    
-                    <div class="form-group">
-                        <label for="new_status">New Status *</label>
-                        <select id="new_status" name="new_status" required>
-                            <option value="operational">Operational</option>
-                            <option value="maintenance">Under Maintenance</option>
-                            <option value="out-of-order">Out of Order</option>
-                            <option value="retired">Retired</option>
-                        </select>
-                    </div>
-                    
-                    <div class="form-group">
-                        <label for="maintenance_notes">Maintenance Notes *</label>
-                        <textarea id="maintenance_notes" name="maintenance_notes" rows="4" placeholder="Describe the maintenance work, issues found, parts replaced, etc." required></textarea>
-                    </div>
-                    
-                    <div style="text-align: right; margin-top: 20px;">
-                        <button type="button" onclick="closeMaintenanceModal()" class="btn btn-secondary">Cancel</button>
-                        <button type="submit" class="btn btn-warning">Update Status</button>
-                    </div>
-                </form>
-            </div>
-        </div>
-    </div>
-    
+
     <script>
-        // Show pop-up messages
-        <?php if ($message): ?>
-            <?php if (strpos($message, 'Error:') === 0): ?>
-                showError('<?php echo addslashes($message); ?>');
-            <?php else: ?>
-                showSuccess('<?php echo addslashes($message); ?>');
-            <?php endif; ?>
-        <?php endif; ?>
-        
-        function openBedAssignModal(bedId, bedNumber, roomName) {
-            document.getElementById('assign_bed_id').value = bedId;
-            document.getElementById('assign_bed_info').textContent = 'Bed ' + bedNumber + ' - ' + roomName;
-            document.getElementById('bedAssignModal').style.display = 'block';
+        // Modal functions
+        function showAddEquipmentModal() {
+            document.getElementById('addEquipmentModal').classList.add('show');
         }
         
-        function closeBedAssignModal() {
-            document.getElementById('bedAssignModal').style.display = 'none';
+        function closeModal(modalId) {
+            document.getElementById(modalId).classList.remove('show');
         }
         
-        function openDischargeModal(assignmentId, patientName) {
-            document.getElementById('discharge_assignment_id').value = assignmentId;
-            document.getElementById('discharge_patient_name').textContent = patientName;
-            document.getElementById('dischargeModal').style.display = 'block';
+        function viewEquipmentDetails(equipmentId) {
+            // Implement equipment details view
+            alert('Equipment Details - ID: ' + equipmentId);
         }
         
-        function closeDischargeModal() {
-            document.getElementById('dischargeModal').style.display = 'none';
+        function editEquipment(equipmentId) {
+            // Implement equipment editing
+            alert('Edit Equipment - ID: ' + equipmentId);
         }
         
-        function openEquipmentModal() {
-            document.getElementById('equipmentModal').style.display = 'block';
+        function addMaintenance(equipmentId) {
+            // Implement maintenance record
+            alert('Add Maintenance - ID: ' + equipmentId);
         }
         
-        function closeEquipmentModal() {
-            document.getElementById('equipmentModal').style.display = 'none';
-        }
+        // Theme controls
+        const themeToggle = document.getElementById('themeToggle');
+        const colorToggle = document.getElementById('colorToggle');
+        const html = document.documentElement;
         
-        function openMaintenanceModal(equipmentId, equipmentName, currentStatus) {
-            document.getElementById('maintenance_equipment_id').value = equipmentId;
-            document.getElementById('maintenance_equipment_name').textContent = equipmentName;
-            document.getElementById('new_status').value = currentStatus;
-            document.getElementById('maintenanceModal').style.display = 'block';
-        }
+        // Theme functionality (same as dashboard)
+        const themes = ['light', 'dark', 'medical'];
+        let currentThemeIndex = 0;
         
-        function closeMaintenanceModal() {
-            document.getElementById('maintenanceModal').style.display = 'none';
-        }
+        const savedTheme = localStorage.getItem('theme') || 'light';
+        currentThemeIndex = themes.indexOf(savedTheme);
+        if (currentThemeIndex === -1) currentThemeIndex = 0;
         
-        function viewEquipment(equipmentId) {
-            window.location.href = 'equipment-details.php?id=' + equipmentId;
+        html.setAttribute('data-theme', savedTheme);
+        updateThemeIcon(savedTheme);
+        
+        themeToggle.addEventListener('click', () => {
+            currentThemeIndex = (currentThemeIndex + 1) % themes.length;
+            const newTheme = themes[currentThemeIndex];
+            html.setAttribute('data-theme', newTheme);
+            localStorage.setItem('theme', newTheme);
+            updateThemeIcon(newTheme);
+        });
+        
+        colorToggle.addEventListener('click', () => {
+            const currentTheme = html.getAttribute('data-theme');
+            const newTheme = currentTheme === 'medical' ? 'light' : 'medical';
+            html.setAttribute('data-theme', newTheme);
+            localStorage.setItem('theme', newTheme);
+            updateThemeIcon(newTheme);
+            currentThemeIndex = themes.indexOf(newTheme);
+        });
+        
+        function updateThemeIcon(theme) {
+            const themeIcon = themeToggle.querySelector('i');
+            const colorIcon = colorToggle.querySelector('i');
+            
+            switch(theme) {
+                case 'light':
+                    themeIcon.className = 'fas fa-sun';
+                    colorIcon.className = 'fas fa-palette';
+                    break;
+                case 'dark':
+                    themeIcon.className = 'fas fa-moon';
+                    colorIcon.className = 'fas fa-palette';
+                    break;
+                case 'medical':
+                    themeIcon.className = 'fas fa-sun';
+                    colorIcon.className = 'fas fa-heart';
+                    break;
+            }
         }
         
         // Close modal when clicking outside
-        window.onclick = function(event) {
-            const modals = ['bedAssignModal', 'dischargeModal', 'equipmentModal', 'maintenanceModal'];
-            modals.forEach(modalId => {
-                const modal = document.getElementById(modalId);
-                if (event.target === modal) {
-                    modal.style.display = 'none';
-                }
-            });
-        }
+        document.addEventListener('click', (e) => {
+            if (e.target.classList.contains('modal')) {
+                e.target.classList.remove('show');
+            }
+        });
     </script>
 </body>
 </html>

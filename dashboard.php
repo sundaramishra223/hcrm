@@ -147,13 +147,16 @@ try {
                     <li><a href="pharmacy.php"><i class="fas fa-pills"></i> Pharmacy</a></li>
                 <?php endif; ?>
                 
-                <?php if (in_array($user_role, ['admin', 'lab_technician', 'intern_lab'])): ?>
-                    <li><a href="laboratory.php"><i class="fas fa-flask"></i> Laboratory</a></li>
-                    <li><a href="lab-technician.php"><i class="fas fa-microscope"></i> Lab Tests</a></li>
+                <?php if (in_array($user_role, ['admin', 'lab_technician', 'intern_lab', 'doctor', 'intern_doctor'])): ?>
+                    <li><a href="lab-test-management.php"><i class="fas fa-flask"></i> Lab Tests</a></li>
                 <?php endif; ?>
                 
                 <?php if (in_array($user_role, ['admin', 'nurse', 'intern_nurse'])): ?>
                     <li><a href="patient-vitals.php"><i class="fas fa-heartbeat"></i> Patient Vitals</a></li>
+                <?php endif; ?>
+                
+                <?php if (in_array($user_role, ['admin', 'doctor', 'nurse', 'receptionist', 'intern_doctor', 'intern_nurse'])): ?>
+                    <li><a href="patient-monitoring.php"><i class="fas fa-user-injured"></i> Patient Monitoring</a></li>
                 <?php endif; ?>
                 
                 <?php if (in_array($user_role, ['admin', 'doctor', 'nurse', 'receptionist', 'intern_doctor', 'intern_nurse'])): ?>
