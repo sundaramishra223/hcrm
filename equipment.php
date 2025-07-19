@@ -1,6 +1,7 @@
 <?php
 session_start();
 require_once 'config/database.php';
+require_once 'includes/functions.php';
 
 // Check if user is logged in
 if (!isset($_SESSION['user_id'])) {
@@ -9,7 +10,7 @@ if (!isset($_SESSION['user_id'])) {
 }
 
 $user_role = $_SESSION['role'];
-if (!in_array($user_role, ['admin', 'nurse', 'receptionist'])) {
+if (!in_array($user_role, ['admin', 'nurse', 'receptionist', 'doctor'])) {
     header('Location: dashboard.php');
     exit;
 }
@@ -186,11 +187,11 @@ $equipment_categories = $db->query("SELECT DISTINCT category FROM equipment ORDE
 // Get statistics
 $stats = [];
 try {
-    $stats['total_beds'] = $db->query("SELECT COUNT(*) as count FROM beds WHERE hospital_id = 1")->fetch()['count'];
-    $stats['occupied_beds'] = $db->query("SELECT COUNT(*) as count FROM beds WHERE hospital_id = 1 AND status = 'occupied'")->fetch()['count'];
-    $stats['available_beds'] = $db->query("SELECT COUNT(*) as count FROM beds WHERE hospital_id = 1 AND status = 'available'")->fetch()['count'];
-    $stats['total_equipment'] = $db->query("SELECT COUNT(*) as count FROM equipment WHERE hospital_id = 1")->fetch()['count'];
-    $stats['maintenance_due'] = $db->query("SELECT COUNT(*) as count FROM equipment WHERE hospital_id = 1 AND status = 'maintenance'")->fetch()['count'];
+    $stats['total_beds'] = $db->query("SELECT COUNT(*) as count FROM beds")->fetch()['count'];
+    $stats['occupied_beds'] = $db->query("SELECT COUNT(*) as count FROM beds WHERE status = 'occupied'")->fetch()['count'];
+    $stats['available_beds'] = $db->query("SELECT COUNT(*) as count FROM beds WHERE status = 'available'")->fetch()['count'];
+    $stats['total_equipment'] = $db->query("SELECT COUNT(*) as count FROM equipment")->fetch()['count'];
+    $stats['maintenance_due'] = $db->query("SELECT COUNT(*) as count FROM equipment WHERE status = 'maintenance'")->fetch()['count'];
 } catch (Exception $e) {
     $stats = ['total_beds' => 0, 'occupied_beds' => 0, 'available_beds' => 0, 'total_equipment' => 0, 'maintenance_due' => 0];
 }
@@ -1064,6 +1065,15 @@ try {
     </div>
     
     <script>
+        // Show pop-up messages
+        <?php if ($message): ?>
+            <?php if (strpos($message, 'Error:') === 0): ?>
+                showError('<?php echo addslashes($message); ?>');
+            <?php else: ?>
+                showSuccess('<?php echo addslashes($message); ?>');
+            <?php endif; ?>
+        <?php endif; ?>
+        
         function openBedAssignModal(bedId, bedNumber, roomName) {
             document.getElementById('assign_bed_id').value = bedId;
             document.getElementById('assign_bed_info').textContent = 'Bed ' + bedNumber + ' - ' + roomName;
