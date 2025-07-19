@@ -155,8 +155,12 @@ try {
                     <li><a href="intern-management.php"><i class="fas fa-graduation-cap"></i> Intern Management</a></li>
                 <?php endif; ?>
                 
-                <?php if (in_array($user_role, ['admin', 'receptionist', 'doctor', 'nurse'])): ?>
-                    <li><a href="ambulance-management.php"><i class="fas fa-ambulance"></i> Ambulance Management</a></li>
+                <?php 
+                // Smart ambulance access based on role requirements
+                $ambulance_roles = ['admin', 'receptionist', 'doctor', 'nurse', 'patient'];
+                if (in_array($user_role, $ambulance_roles)): 
+                ?>
+                    <li><a href="ambulance-management.php"><i class="fas fa-ambulance"></i> <?php echo $user_role === 'patient' ? 'My Ambulance Bookings' : 'Ambulance Management'; ?></a></li>
                 <?php endif; ?>
                 
                 <?php if (in_array($user_role, ['admin', 'doctor', 'nurse', 'lab_technician', 'pharmacy_staff'])): ?>
