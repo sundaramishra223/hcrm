@@ -21,6 +21,8 @@ try {
         $stats['total_revenue'] = $db->query("SELECT SUM(total_amount) as revenue FROM bills WHERE DATE(created_at) = CURDATE()")->fetch()['revenue'] ?? 0;
         $stats['pending_bills'] = $db->query("SELECT COUNT(*) as count FROM bills WHERE payment_status != 'paid'")->fetch()['count'];
         $stats['available_beds'] = $db->query("SELECT COUNT(*) as count FROM beds WHERE status = 'available'")->fetch()['count'];
+        $stats['total_beds'] = $db->query("SELECT COUNT(*) as count FROM beds")->fetch()['count'];
+        $stats['occupied_beds'] = $db->query("SELECT COUNT(*) as count FROM beds WHERE status = 'occupied'")->fetch()['count'];
         $stats['total_staff'] = $db->query("SELECT COUNT(*) as count FROM staff")->fetch()['count'];
         $stats['today_visits'] = $db->query("SELECT COUNT(*) as count FROM patient_visits WHERE visit_date = CURDATE()")->fetch()['count'];
     } elseif ($user_role === 'doctor') {
@@ -29,20 +31,27 @@ try {
         $stats['today_appointments'] = $db->query("SELECT COUNT(*) as count FROM appointments WHERE doctor_id = ? AND appointment_date = CURDATE()", [$doctor_id])->fetch()['count'];
         $stats['pending_appointments'] = $db->query("SELECT COUNT(*) as count FROM appointments WHERE doctor_id = ? AND status = 'scheduled'", [$doctor_id])->fetch()['count'];
         $stats['total_prescriptions'] = $db->query("SELECT COUNT(*) as count FROM prescriptions WHERE doctor_id = ?", [$doctor_id])->fetch()['count'];
+        $stats['available_beds'] = $db->query("SELECT COUNT(*) as count FROM beds WHERE status = 'available'")->fetch()['count'];
+        $stats['occupied_beds'] = $db->query("SELECT COUNT(*) as count FROM beds WHERE status = 'occupied'")->fetch()['count'];
     } elseif ($user_role === 'nurse') {
         $stats['assigned_patients'] = $db->query("SELECT COUNT(*) as count FROM patient_visits WHERE assigned_nurse_id = (SELECT id FROM staff WHERE user_id = ?) AND visit_date = CURDATE()", [$_SESSION['user_id']])->fetch()['count'];
         $stats['today_vitals'] = $db->query("SELECT COUNT(*) as count FROM patient_vitals WHERE recorded_by = (SELECT id FROM staff WHERE user_id = ?) AND DATE(recorded_at) = CURDATE()", [$_SESSION['user_id']])->fetch()['count'];
+        $stats['available_beds'] = $db->query("SELECT COUNT(*) as count FROM beds WHERE status = 'available'")->fetch()['count'];
+        $stats['occupied_beds'] = $db->query("SELECT COUNT(*) as count FROM beds WHERE status = 'occupied'")->fetch()['count'];
     } elseif ($user_role === 'patient') {
         $patient_id = $db->query("SELECT id FROM patients WHERE user_id = ?", [$_SESSION['user_id']])->fetch()['id'];
         $stats['my_appointments'] = $db->query("SELECT COUNT(*) as count FROM appointments WHERE patient_id = ?", [$patient_id])->fetch()['count'];
         $stats['my_prescriptions'] = $db->query("SELECT COUNT(*) as count FROM prescriptions WHERE patient_id = ?", [$patient_id])->fetch()['count'];
         $stats['my_bills'] = $db->query("SELECT COUNT(*) as count FROM bills WHERE patient_id = ?", [$patient_id])->fetch()['count'];
         $stats['pending_bills'] = $db->query("SELECT COUNT(*) as count FROM bills WHERE patient_id = ? AND payment_status != 'paid'", [$patient_id])->fetch()['count'];
+        $stats['my_bed'] = $db->query("SELECT COUNT(*) as count FROM beds WHERE patient_id = ?", [$patient_id])->fetch()['count'];
     } elseif ($user_role === 'receptionist') {
         $stats['today_appointments'] = $db->query("SELECT COUNT(*) as count FROM appointments WHERE appointment_date = CURDATE()")->fetch()['count'];
         $stats['pending_appointments'] = $db->query("SELECT COUNT(*) as count FROM appointments WHERE status = 'scheduled'")->fetch()['count'];
         $stats['today_registrations'] = $db->query("SELECT COUNT(*) as count FROM patients WHERE DATE(created_at) = CURDATE() AND hospital_id = 1")->fetch()['count'];
         $stats['pending_bills'] = $db->query("SELECT COUNT(*) as count FROM bills WHERE payment_status != 'paid'")->fetch()['count'];
+        $stats['available_beds'] = $db->query("SELECT COUNT(*) as count FROM beds WHERE status = 'available'")->fetch()['count'];
+        $stats['occupied_beds'] = $db->query("SELECT COUNT(*) as count FROM beds WHERE status = 'occupied'")->fetch()['count'];
     } elseif ($user_role === 'lab_technician') {
         $stats['pending_tests'] = $db->query("SELECT COUNT(*) as count FROM lab_order_tests WHERE status IN ('pending', 'in_progress')")->fetch()['count'];
         $stats['completed_tests'] = $db->query("SELECT COUNT(*) as count FROM lab_order_tests WHERE status = 'completed' AND DATE(completed_at) = CURDATE()")->fetch()['count'];
@@ -59,10 +68,14 @@ try {
         $stats['today_appointments'] = $db->query("SELECT COUNT(*) as count FROM appointments WHERE doctor_id = ? AND appointment_date = CURDATE()", [$doctor_id])->fetch()['count'];
         $stats['pending_appointments'] = $db->query("SELECT COUNT(*) as count FROM appointments WHERE doctor_id = ? AND status = 'scheduled'", [$doctor_id])->fetch()['count'];
         $stats['total_prescriptions'] = $db->query("SELECT COUNT(*) as count FROM prescriptions WHERE doctor_id = ?", [$doctor_id])->fetch()['count'];
+        $stats['available_beds'] = $db->query("SELECT COUNT(*) as count FROM beds WHERE status = 'available'")->fetch()['count'];
+        $stats['occupied_beds'] = $db->query("SELECT COUNT(*) as count FROM beds WHERE status = 'occupied'")->fetch()['count'];
     } elseif ($user_role === 'intern_nurse') {
         $stats['assigned_patients'] = $db->query("SELECT COUNT(*) as count FROM patient_visits WHERE assigned_nurse_id = (SELECT id FROM staff WHERE user_id = ?) AND visit_date = CURDATE()", [$_SESSION['user_id']])->fetch()['count'];
         $stats['today_vitals'] = $db->query("SELECT COUNT(*) as count FROM patient_vitals WHERE recorded_by = (SELECT id FROM staff WHERE user_id = ?) AND DATE(recorded_at) = CURDATE()", [$_SESSION['user_id']])->fetch()['count'];
         $stats['total_vitals'] = $db->query("SELECT COUNT(*) as count FROM patient_vitals WHERE recorded_by = (SELECT id FROM staff WHERE user_id = ?)", [$_SESSION['user_id']])->fetch()['count'];
+        $stats['available_beds'] = $db->query("SELECT COUNT(*) as count FROM beds WHERE status = 'available'")->fetch()['count'];
+        $stats['occupied_beds'] = $db->query("SELECT COUNT(*) as count FROM beds WHERE status = 'occupied'")->fetch()['count'];
     } elseif ($user_role === 'intern_lab') {
         $stats['pending_tests'] = $db->query("SELECT COUNT(*) as count FROM lab_order_tests WHERE status IN ('pending', 'in_progress')")->fetch()['count'];
         $stats['completed_tests'] = $db->query("SELECT COUNT(*) as count FROM lab_order_tests WHERE status = 'completed' AND DATE(completed_at) = CURDATE()")->fetch()['count'];
@@ -156,6 +169,11 @@ try {
                 
                 <?php if (in_array($user_role, ['admin', 'nurse', 'receptionist', 'doctor'])): ?>
                     <li><a href="equipment.php"><i class="fas fa-tools"></i> Equipment</a></li>
+                    <li><a href="beds.php"><i class="fas fa-bed"></i> Bed Management</a></li>
+                <?php endif; ?>
+                
+                <?php if ($user_role === 'patient'): ?>
+                    <li><a href="my-bed.php"><i class="fas fa-bed"></i> My Bed</a></li>
                 <?php endif; ?>
                 
                 <?php 
@@ -248,6 +266,16 @@ try {
                         <p>Available Beds</p>
                         <i class="fas fa-bed stat-icon"></i>
                     </div>
+                    <div class="stat-card">
+                        <h3><?php echo number_format($stats['total_beds'] ?? 0); ?></h3>
+                        <p>Total Beds</p>
+                        <i class="fas fa-bed stat-icon"></i>
+                    </div>
+                    <div class="stat-card">
+                        <h3><?php echo number_format($stats['occupied_beds'] ?? 0); ?></h3>
+                        <p>Occupied Beds</p>
+                        <i class="fas fa-user-in-bed stat-icon"></i>
+                    </div>
                 <?php elseif ($user_role === 'doctor'): ?>
                     <div class="stat-card">
                         <h3><?php echo number_format($stats['my_patients'] ?? 0); ?></h3>
@@ -269,6 +297,16 @@ try {
                         <p>Total Prescriptions</p>
                         <i class="fas fa-prescription stat-icon"></i>
                     </div>
+                    <div class="stat-card">
+                        <h3><?php echo number_format($stats['available_beds'] ?? 0); ?></h3>
+                        <p>Available Beds</p>
+                        <i class="fas fa-bed stat-icon"></i>
+                    </div>
+                    <div class="stat-card">
+                        <h3><?php echo number_format($stats['occupied_beds'] ?? 0); ?></h3>
+                        <p>Occupied Beds</p>
+                        <i class="fas fa-user-in-bed stat-icon"></i>
+                    </div>
                 <?php elseif ($user_role === 'nurse'): ?>
                     <div class="stat-card">
                         <h3><?php echo number_format($stats['assigned_patients'] ?? 0); ?></h3>
@@ -279,6 +317,16 @@ try {
                         <h3><?php echo number_format($stats['today_vitals'] ?? 0); ?></h3>
                         <p>Vitals Recorded Today</p>
                         <i class="fas fa-heartbeat stat-icon"></i>
+                    </div>
+                    <div class="stat-card">
+                        <h3><?php echo number_format($stats['available_beds'] ?? 0); ?></h3>
+                        <p>Available Beds</p>
+                        <i class="fas fa-bed stat-icon"></i>
+                    </div>
+                    <div class="stat-card">
+                        <h3><?php echo number_format($stats['occupied_beds'] ?? 0); ?></h3>
+                        <p>Occupied Beds</p>
+                        <i class="fas fa-user-in-bed stat-icon"></i>
                     </div>
                 <?php elseif ($user_role === 'patient'): ?>
                     <div class="stat-card">
@@ -301,6 +349,11 @@ try {
                         <p>Pending Bills</p>
                         <i class="fas fa-clock stat-icon"></i>
                     </div>
+                    <div class="stat-card">
+                        <h3><?php echo number_format($stats['my_bed'] ?? 0); ?></h3>
+                        <p>My Bed</p>
+                        <i class="fas fa-bed stat-icon"></i>
+                    </div>
                 <?php elseif ($user_role === 'receptionist'): ?>
                     <div class="stat-card">
                         <h3><?php echo number_format($stats['today_appointments'] ?? 0); ?></h3>
@@ -321,6 +374,16 @@ try {
                         <h3><?php echo number_format($stats['pending_bills'] ?? 0); ?></h3>
                         <p>Pending Bills</p>
                         <i class="fas fa-money-bill-wave stat-icon"></i>
+                    </div>
+                    <div class="stat-card">
+                        <h3><?php echo number_format($stats['available_beds'] ?? 0); ?></h3>
+                        <p>Available Beds</p>
+                        <i class="fas fa-bed stat-icon"></i>
+                    </div>
+                    <div class="stat-card">
+                        <h3><?php echo number_format($stats['occupied_beds'] ?? 0); ?></h3>
+                        <p>Occupied Beds</p>
+                        <i class="fas fa-user-in-bed stat-icon"></i>
                     </div>
                 <?php elseif ($user_role === 'lab_technician'): ?>
                     <div class="stat-card">
@@ -385,6 +448,16 @@ try {
                         <p>Total Prescriptions</p>
                         <i class="fas fa-prescription stat-icon"></i>
                     </div>
+                    <div class="stat-card">
+                        <h3><?php echo number_format($stats['available_beds'] ?? 0); ?></h3>
+                        <p>Available Beds</p>
+                        <i class="fas fa-bed stat-icon"></i>
+                    </div>
+                    <div class="stat-card">
+                        <h3><?php echo number_format($stats['occupied_beds'] ?? 0); ?></h3>
+                        <p>Occupied Beds</p>
+                        <i class="fas fa-user-in-bed stat-icon"></i>
+                    </div>
                 <?php elseif ($user_role === 'intern_nurse'): ?>
                     <div class="stat-card">
                         <h3><?php echo number_format($stats['assigned_patients'] ?? 0); ?></h3>
@@ -400,6 +473,16 @@ try {
                         <h3><?php echo number_format($stats['total_vitals'] ?? 0); ?></h3>
                         <p>Total Vitals Recorded</p>
                         <i class="fas fa-chart-line stat-icon"></i>
+                    </div>
+                    <div class="stat-card">
+                        <h3><?php echo number_format($stats['available_beds'] ?? 0); ?></h3>
+                        <p>Available Beds</p>
+                        <i class="fas fa-bed stat-icon"></i>
+                    </div>
+                    <div class="stat-card">
+                        <h3><?php echo number_format($stats['occupied_beds'] ?? 0); ?></h3>
+                        <p>Occupied Beds</p>
+                        <i class="fas fa-user-in-bed stat-icon"></i>
                     </div>
                 <?php elseif ($user_role === 'intern_lab'): ?>
                     <div class="stat-card">
