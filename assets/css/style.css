@@ -462,10 +462,31 @@ a:hover {
     left: 0;
     top: 0;
     overflow-y: auto;
-    transition: var(--transition-slow);
+    transition: width 0.3s ease, transform 0.3s ease;
     z-index: var(--z-fixed);
     box-shadow: var(--shadow-xl);
     backdrop-filter: blur(20px);
+}
+
+.sidebar.collapsed {
+    width: 80px;
+}
+
+.sidebar.collapsed .sidebar-header h2 {
+    display: none;
+}
+
+.sidebar.collapsed .sidebar-header p {
+    display: none;
+}
+
+.sidebar.collapsed .sidebar-menu a span {
+    display: none;
+}
+
+.sidebar.collapsed .sidebar-menu a {
+    justify-content: center;
+    padding: var(--space-3);
 }
 
 .sidebar-header {

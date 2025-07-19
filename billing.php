@@ -36,8 +36,8 @@ if ($_POST && isset($_POST['action']) && $_POST['action'] === 'create_bill') {
         }
         
         $discount = (float)($_POST['discount_amount'] ?? 0);
-        $tax_rate = 18; // GST 18%
-        $tax_amount = ($subtotal - $discount) * ($tax_rate / 100);
+        $tax_rate = (float)($_POST['tax_rate'] ?? 0); // Optional tax rate
+        $tax_amount = $tax_rate > 0 ? ($subtotal - $discount) * ($tax_rate / 100) : 0;
         $total_amount = $subtotal - $discount + $tax_amount;
         
         // Insert bill
@@ -771,8 +771,13 @@ try {
                             </span>
                         </div>
                         <div class="summary-row">
-                            <span>Tax (18% GST):</span>
-                            <span id="tax_amount">₹0.00</span>
+                            <span>Tax:</span>
+                            <span>
+                                <input type="number" name="tax_rate" id="tax_rate" value="0" min="0" max="100" step="0.01" 
+                                       style="width: 50px; border: 1px solid #ddd; padding: 2px;" 
+                                       placeholder="0" onchange="calculateTotal()">% = 
+                                <span id="tax_amount">₹0.00</span>
+                            </span>
                         </div>
                         <div class="summary-row total">
                             <span>Total Amount:</span>
@@ -861,7 +866,7 @@ try {
         
         function openBillModal() {
             document.getElementById('billModal').style.display = 'block';
-            calculateTotals();
+            calculateTotal();
         }
         
         function closeBillModal() {
@@ -905,16 +910,16 @@ try {
             // Add event listeners to new inputs
             const quantityInput = newItem.querySelector('input[name*="[quantity]"]');
             const priceInput = newItem.querySelector('input[name*="[price]"]');
-            quantityInput.addEventListener('input', calculateTotals);
-            priceInput.addEventListener('input', calculateTotals);
+                                    quantityInput.addEventListener('input', calculateTotal);
+                        priceInput.addEventListener('input', calculateTotal);
         }
         
         function removeItem(button) {
             button.closest('.item-row').remove();
-            calculateTotals();
+            calculateTotal();
         }
         
-        function calculateTotals() {
+        function calculateTotal() {
             let subtotal = 0;
             
             document.querySelectorAll('.item-row').forEach(row => {
@@ -933,8 +938,9 @@ try {
             });
             
             const discount = parseFloat(document.getElementById('discount_amount').value) || 0;
+            const taxRate = parseFloat(document.getElementById('tax_rate').value) || 0;
             const taxableAmount = subtotal - discount;
-            const taxAmount = taxableAmount * 0.18;
+            const taxAmount = taxableAmount * (taxRate / 100);
             const totalAmount = taxableAmount + taxAmount;
             
             document.getElementById('subtotal').textContent = '₹' + subtotal.toFixed(2);
@@ -945,14 +951,15 @@ try {
         // Add event listeners
         document.addEventListener('DOMContentLoaded', function() {
             // Initial calculation
-            calculateTotals();
+            calculateTotal();
             
             // Add listeners to existing inputs
             document.querySelectorAll('input[name*="[quantity]"], input[name*="[price]"]').forEach(input => {
-                input.addEventListener('input', calculateTotals);
+                input.addEventListener('input', calculateTotal);
             });
             
-            document.getElementById('discount_amount').addEventListener('input', calculateTotals);
+            document.getElementById('discount_amount').addEventListener('input', calculateTotal);
+            document.getElementById('tax_rate').addEventListener('input', calculateTotal);
         });
         
         // Close modal when clicking outside
