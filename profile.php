@@ -282,7 +282,12 @@ try {
                     <i class="fas fa-user stat-icon"></i>
                 </div>
                 <div class="stat-card">
-                    <h3><?php echo htmlspecialchars($user_profile['role_display_name'] ?? 'N/A'); ?></h3>
+                    <div class="role-display">
+                        <span class="role-badge role-<?php echo strtolower(str_replace(' ', '-', $user_profile['role_display_name'] ?? 'unknown')); ?>">
+                            <i class="fas fa-id-badge"></i>
+                            <?php echo htmlspecialchars($user_profile['role_display_name'] ?? 'N/A'); ?>
+                        </span>
+                    </div>
                     <p>Role</p>
                     <i class="fas fa-id-badge stat-icon"></i>
                 </div>
@@ -574,6 +579,112 @@ try {
         
         .info-item span {
             color: #666;
+        }
+
+        /* Professional Role Badge Styles */
+        .role-display {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            margin: 10px 0;
+        }
+
+        .role-badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            padding: 8px 16px;
+            border-radius: 20px;
+            font-weight: 600;
+            font-size: 14px;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            transition: all 0.3s ease;
+        }
+
+        .role-badge:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 8px rgba(0,0,0,0.15);
+        }
+
+        .role-badge i {
+            font-size: 16px;
+        }
+
+        /* Role-specific colors */
+        .role-badge.role-administrator {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+        }
+
+        .role-badge.role-doctor {
+            background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
+            color: white;
+        }
+
+        .role-badge.role-intern-doctor {
+            background: linear-gradient(135deg, #ffecd2 0%, #fcb69f 100%);
+            color: #8b4513;
+        }
+
+        .role-badge.role-nurse {
+            background: linear-gradient(135deg, #a8edea 0%, #fed6e3 100%);
+            color: #2c5530;
+        }
+
+        .role-badge.role-intern-nurse {
+            background: linear-gradient(135deg, #d299c2 0%, #fef9d7 100%);
+            color: #4a4a4a;
+        }
+
+        .role-badge.role-patient {
+            background: linear-gradient(135deg, #89f7fe 0%, #66a6ff 100%);
+            color: white;
+        }
+
+        .role-badge.role-receptionist {
+            background: linear-gradient(135deg, #fa709a 0%, #fee140 100%);
+            color: white;
+        }
+
+        .role-badge.role-lab-technician {
+            background: linear-gradient(135deg, #a8caba 0%, #5d4e75 100%);
+            color: white;
+        }
+
+        .role-badge.role-intern-lab {
+            background: linear-gradient(135deg, #ff9a9e 0%, #fecfef 100%);
+            color: #4a4a4a;
+        }
+
+        .role-badge.role-pharmacy-staff {
+            background: linear-gradient(135deg, #ffecd2 0%, #fcb69f 100%);
+            color: #8b4513;
+        }
+
+        .role-badge.role-intern-pharmacy {
+            background: linear-gradient(135deg, #ff9a9e 0%, #fecfef 100%);
+            color: #4a4a4a;
+        }
+
+        .role-badge.role-unknown {
+            background: linear-gradient(135deg, #bdc3c7 0%, #2c3e50 100%);
+            color: white;
+        }
+
+        /* Enhanced stat card for role display */
+        .stat-card .role-display {
+            margin: 0;
+        }
+
+        .stat-card .role-badge {
+            font-size: 12px;
+            padding: 6px 12px;
+        }
+
+        .stat-card .role-badge i {
+            font-size: 14px;
         }
     </style>
 </body>
