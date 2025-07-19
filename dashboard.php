@@ -652,18 +652,35 @@ try {
             const currentTheme = html.getAttribute('data-theme');
             const newTheme = currentTheme === 'medical' ? 'light' : 'medical';
             
-            html.setAttribute('data-theme', newTheme);
-            localStorage.setItem('theme', newTheme);
-            updateThemeIcon(newTheme);
+            // Add immediate visual feedback
+            colorToggle.style.transform = 'scale(0.9)';
+            colorToggle.style.backgroundColor = 'var(--primary-color)';
+            colorToggle.style.color = 'white';
             
-            // Add color cycling animation
-            colorToggle.classList.add('active');
             setTimeout(() => {
-                colorToggle.classList.remove('active');
-            }, 2000);
-            
-            // Update theme index
-            currentThemeIndex = themes.indexOf(newTheme);
+                html.setAttribute('data-theme', newTheme);
+                localStorage.setItem('theme', newTheme);
+                updateThemeIcon(newTheme);
+                
+                // Add color cycling animation
+                colorToggle.classList.add('active');
+                
+                // Reset button styling
+                colorToggle.style.transform = 'scale(1)';
+                colorToggle.style.backgroundColor = '';
+                colorToggle.style.color = '';
+                
+                setTimeout(() => {
+                    colorToggle.classList.remove('active');
+                }, 2000);
+                
+                // Update theme index
+                currentThemeIndex = themes.indexOf(newTheme);
+                
+                // Show confirmation message
+                const message = newTheme === 'medical' ? 'Medical Theme Activated! 🏥' : 'Light Theme Activated! ☀️';
+                showThemeNotification(message);
+            }, 150);
         });
 
         function updateThemeIcon(theme) {
@@ -692,6 +709,39 @@ try {
             // Add subtle animation feedback
             themeIcon.style.animation = 'fadeIn 0.3s ease-out';
             colorIcon.style.animation = 'fadeIn 0.3s ease-out';
+        }
+
+        // Theme notification function
+        function showThemeNotification(message) {
+            // Remove existing notification if any
+            const existingNotification = document.querySelector('.theme-notification');
+            if (existingNotification) {
+                existingNotification.remove();
+            }
+            
+            // Create notification element
+            const notification = document.createElement('div');
+            notification.className = 'theme-notification';
+            notification.innerHTML = `
+                <i class="fas fa-check-circle"></i>
+                <span>${message}</span>
+            `;
+            
+            // Add to body
+            document.body.appendChild(notification);
+            
+            // Show with animation
+            setTimeout(() => {
+                notification.classList.add('show');
+            }, 100);
+            
+            // Auto hide after 3 seconds
+            setTimeout(() => {
+                notification.classList.remove('show');
+                setTimeout(() => {
+                    notification.remove();
+                }, 300);
+            }, 3000);
         }
 
         // Mobile Menu Toggle
