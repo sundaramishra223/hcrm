@@ -806,6 +806,15 @@ try {
             options: {
                 responsive: true,
                 maintainAspectRatio: false,
+                onClick: (e) => {
+                    // Disable chart click behavior
+                    e.stopPropagation();
+                    return false;
+                },
+                onHover: (e) => {
+                    // Keep hover behavior but prevent click
+                    e.native.target.style.cursor = 'default';
+                },
                 plugins: {
                     legend: {
                         display: false
@@ -838,7 +847,7 @@ try {
                 datasets: [{
                     label: 'New Patients',
                     data: patientData.map(item => item.count),
-                    backgroundColor: 'rgba(0, 70, 133, 0.8)',
+                    backgroundColor: 'rgba(0, 133, 70, 0.8)',
                     borderColor: '#004685',
                     borderWidth: 1
                 }]
@@ -846,6 +855,15 @@ try {
             options: {
                 responsive: true,
                 maintainAspectRatio: false,
+                onClick: (e) => {
+                    // Disable chart click behavior
+                    e.stopPropagation();
+                    return false;
+                },
+                onHover: (e) => {
+                    // Keep hover behavior but prevent click
+                    e.native.target.style.cursor = 'default';
+                },
                 plugins: {
                     legend: {
                         display: false

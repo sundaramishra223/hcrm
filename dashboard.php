@@ -593,6 +593,15 @@ try {
                     mode: 'index',
                     intersect: false,
                 },
+                onClick: (e) => {
+                    // Disable chart click behavior
+                    e.stopPropagation();
+                    return false;
+                },
+                onHover: (e) => {
+                    // Keep hover behavior but prevent click
+                    e.native.target.style.cursor = 'default';
+                },
                 scales: {
                     x: {
                         display: true,

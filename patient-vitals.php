@@ -562,6 +562,15 @@ if ($selected_patient_id) {
                 options: {
                     responsive: true,
                     maintainAspectRatio: false,
+                    onClick: (e) => {
+                        // Disable chart click behavior
+                        e.stopPropagation();
+                        return false;
+                    },
+                    onHover: (e) => {
+                        // Keep hover behavior but prevent click
+                        e.native.target.style.cursor = 'default';
+                    },
                     scales: {
                         y: {
                             beginAtZero: false
