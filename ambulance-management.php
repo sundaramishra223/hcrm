@@ -10,10 +10,10 @@ if (!isset($_SESSION['user_id'])) {
 }
 
 $user_role = $_SESSION['role'];
-if (!in_array($user_role, ['admin', 'receptionist', 'doctor', 'nurse'])) {
-    header('Location: dashboard.php');
-    exit;
-}
+// All roles can access ambulance management but with different permissions
+$can_manage_ambulances = in_array($user_role, ['admin', 'receptionist']);
+$can_book_ambulances = in_array($user_role, ['admin', 'receptionist', 'doctor', 'nurse']);
+$can_view_own_bookings = $user_role === 'patient';
 
 $db = new Database();
 $message = '';
@@ -110,17 +110,35 @@ $ambulances = $db->query("
 ")->fetchAll();
 
 // Get ambulance bookings
-$bookings = $db->query("
-    SELECT ab.*, 
-    a.vehicle_number, a.vehicle_type, a.driver_name, a.driver_phone,
-    p.first_name, p.last_name, p.phone as patient_phone,
-    CONCAT(u.first_name, ' ', u.last_name) as created_by_name
-    FROM ambulance_bookings ab
-    JOIN ambulances a ON ab.ambulance_id = a.id
-    LEFT JOIN patients p ON ab.patient_id = p.id
-    LEFT JOIN users u ON ab.created_by = u.id
-    ORDER BY ab.created_at DESC
-")->fetchAll();
+if ($user_role === 'patient') {
+    // Patients can only see their own bookings
+    $patient_id = $db->query("SELECT id FROM patients WHERE user_id = ?", [$_SESSION['user_id']])->fetch()['id'];
+    $bookings = $db->query("
+        SELECT ab.*, 
+        a.vehicle_number, a.vehicle_type, a.driver_name, a.driver_phone,
+        p.first_name, p.last_name, p.phone as patient_phone,
+        CONCAT(u.first_name, ' ', u.last_name) as created_by_name
+        FROM ambulance_bookings ab
+        JOIN ambulances a ON ab.ambulance_id = a.id
+        LEFT JOIN patients p ON ab.patient_id = p.id
+        LEFT JOIN users u ON ab.created_by = u.id
+        WHERE ab.patient_id = ?
+        ORDER BY ab.created_at DESC
+    ", [$patient_id])->fetchAll();
+} else {
+    // Staff can see all bookings
+    $bookings = $db->query("
+        SELECT ab.*, 
+        a.vehicle_number, a.vehicle_type, a.driver_name, a.driver_phone,
+        p.first_name, p.last_name, p.phone as patient_phone,
+        CONCAT(u.first_name, ' ', u.last_name) as created_by_name
+        FROM ambulance_bookings ab
+        JOIN ambulances a ON ab.ambulance_id = a.id
+        LEFT JOIN patients p ON ab.patient_id = p.id
+        LEFT JOIN users u ON ab.created_by = u.id
+        ORDER BY ab.created_at DESC
+    ")->fetchAll();
+}
 
 // Get patients for booking
 $patients = $db->query("SELECT id, first_name, last_name, phone, patient_id FROM patients ORDER BY first_name")->fetchAll();
@@ -128,13 +146,26 @@ $patients = $db->query("SELECT id, first_name, last_name, phone, patient_id FROM
 // Get statistics
 $stats = [];
 try {
-    $stats['total_ambulances'] = count($ambulances);
-    $stats['available_ambulances'] = count(array_filter($ambulances, function($a) { return $a['status'] === 'available'; }));
-    $stats['total_bookings'] = count($bookings);
-    $stats['active_bookings'] = count(array_filter($bookings, function($b) { return $b['status'] === 'active'; }));
-    $stats['today_bookings'] = $db->query("SELECT COUNT(*) as count FROM ambulance_bookings WHERE DATE(created_at) = CURDATE()")->fetch()['count'];
+    if ($user_role === 'patient') {
+        // Patient statistics
+        $patient_id = $db->query("SELECT id FROM patients WHERE user_id = ?", [$_SESSION['user_id']])->fetch()['id'];
+        $stats['total_bookings'] = count($bookings);
+        $stats['active_bookings'] = count(array_filter($bookings, function($b) { return $b['status'] === 'active'; }));
+        $stats['completed_bookings'] = count(array_filter($bookings, function($b) { return $b['status'] === 'completed'; }));
+        $stats['today_bookings'] = $db->query("SELECT COUNT(*) as count FROM ambulance_bookings WHERE patient_id = ? AND DATE(created_at) = CURDATE()", [$patient_id])->fetch()['count'];
+        $stats['total_ambulances'] = 0; // Patients don't need to see total ambulances
+        $stats['available_ambulances'] = 0;
+    } else {
+        // Staff statistics
+        $stats['total_ambulances'] = count($ambulances);
+        $stats['available_ambulances'] = count(array_filter($ambulances, function($a) { return $a['status'] === 'available'; }));
+        $stats['total_bookings'] = count($bookings);
+        $stats['active_bookings'] = count(array_filter($bookings, function($b) { return $b['status'] === 'active'; }));
+        $stats['today_bookings'] = $db->query("SELECT COUNT(*) as count FROM ambulance_bookings WHERE DATE(created_at) = CURDATE()")->fetch()['count'];
+        $stats['completed_bookings'] = 0;
+    }
 } catch (Exception $e) {
-    $stats = ['total_ambulances' => 0, 'available_ambulances' => 0, 'total_bookings' => 0, 'active_bookings' => 0, 'today_bookings' => 0];
+    $stats = ['total_ambulances' => 0, 'available_ambulances' => 0, 'total_bookings' => 0, 'active_bookings' => 0, 'today_bookings' => 0, 'completed_bookings' => 0];
 }
 ?>
 <!DOCTYPE html>
@@ -416,47 +447,65 @@ try {
 <body>
     <div class="container">
         <div class="header">
-            <h1><i class="fas fa-ambulance"></i> Ambulance Management</h1>
+            <h1><i class="fas fa-ambulance"></i> <?php echo $user_role === 'patient' ? 'My Ambulance Bookings' : 'Ambulance Management'; ?></h1>
             <div>
                 <a href="dashboard.php" class="btn btn-secondary">← Back to Dashboard</a>
-                <button onclick="openModal('ambulanceModal')" class="btn btn-primary">+ Add Ambulance</button>
-                <button onclick="openModal('bookingModal')" class="btn btn-success">+ Book Ambulance</button>
+                <?php if ($can_manage_ambulances): ?>
+                    <button onclick="openModal('ambulanceModal')" class="btn btn-primary">+ Add Ambulance</button>
+                <?php endif; ?>
+                <?php if ($can_book_ambulances): ?>
+                    <button onclick="openModal('bookingModal')" class="btn btn-success">+ Book Ambulance</button>
+                <?php endif; ?>
             </div>
         </div>
 
         <!-- Statistics -->
         <div class="stats-grid">
-            <div class="stat-card">
-                <h3><?php echo number_format($stats['total_ambulances']); ?></h3>
-                <p>Total Ambulances</p>
-            </div>
-            <div class="stat-card">
-                <h3><?php echo number_format($stats['available_ambulances']); ?></h3>
-                <p>Available Ambulances</p>
-            </div>
+            <?php if ($user_role !== 'patient'): ?>
+                <div class="stat-card">
+                    <h3><?php echo number_format($stats['total_ambulances']); ?></h3>
+                    <p>Total Ambulances</p>
+                </div>
+                <div class="stat-card">
+                    <h3><?php echo number_format($stats['available_ambulances']); ?></h3>
+                    <p>Available Ambulances</p>
+                </div>
+            <?php endif; ?>
             <div class="stat-card">
                 <h3><?php echo number_format($stats['total_bookings']); ?></h3>
-                <p>Total Bookings</p>
+                <p><?php echo $user_role === 'patient' ? 'My Bookings' : 'Total Bookings'; ?></p>
             </div>
             <div class="stat-card">
                 <h3><?php echo number_format($stats['active_bookings']); ?></h3>
                 <p>Active Bookings</p>
             </div>
+            <?php if ($user_role === 'patient'): ?>
+                <div class="stat-card">
+                    <h3><?php echo number_format($stats['completed_bookings']); ?></h3>
+                    <p>Completed Bookings</p>
+                </div>
+            <?php endif; ?>
             <div class="stat-card">
                 <h3><?php echo number_format($stats['today_bookings']); ?></h3>
-                <p>Today's Bookings</p>
+                <p><?php echo $user_role === 'patient' ? "Today's Bookings" : "Today's Bookings"; ?></p>
             </div>
         </div>
 
         <!-- Tabs -->
         <div class="tabs">
-            <button class="tab active" onclick="showTab('ambulances')">Ambulances</button>
-            <button class="tab" onclick="showTab('bookings')">Bookings</button>
+            <?php if ($user_role !== 'patient'): ?>
+                <button class="tab active" onclick="showTab('ambulances')">Ambulances</button>
+            <?php endif; ?>
+            <button class="tab <?php echo $user_role === 'patient' ? 'active' : ''; ?>" onclick="showTab('bookings')"><?php echo $user_role === 'patient' ? 'My Bookings' : 'Bookings'; ?></button>
         </div>
 
         <!-- Ambulances Tab -->
         <div class="tab-content">
-            <div id="ambulances" class="tab-pane active">
+            <?php if ($user_role !== 'patient'): ?>
+                <div id="ambulances" class="tab-pane active">
+            <?php else: ?>
+                <div id="ambulances" class="tab-pane" style="display: none;">
+            <?php endif; ?>
                 <table class="table">
                     <thead>
                         <tr>
@@ -513,7 +562,7 @@ try {
             </div>
 
             <!-- Bookings Tab -->
-            <div id="bookings" class="tab-pane">
+            <div id="bookings" class="tab-pane <?php echo $user_role === 'patient' ? 'active' : ''; ?>">
                 <table class="table">
                     <thead>
                         <tr>
