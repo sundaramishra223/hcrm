@@ -15,9 +15,16 @@ ADD COLUMN vital_signs TEXT AFTER oxygen_saturation;
 ALTER TABLE lab_tests 
 ADD COLUMN test_name VARCHAR(200) AFTER name;
 
+-- Fix 3: Add priority column to bed_assignments table
+ALTER TABLE bed_assignments 
+ADD COLUMN priority ENUM('low', 'medium', 'high') DEFAULT 'medium' AFTER status;
+
 -- Update the new columns with existing data
 -- Copy name to test_name in lab_tests
 UPDATE lab_tests SET test_name = name WHERE test_name IS NULL;
+
+-- Set default priority for existing bed assignments
+UPDATE bed_assignments SET priority = 'medium' WHERE priority IS NULL;
 
 -- Create computed vital_signs for existing records
 UPDATE patient_vitals 
@@ -33,6 +40,7 @@ WHERE vital_signs IS NULL;
 -- Show tables structure to verify
 DESCRIBE patient_vitals;
 DESCRIBE lab_tests;
+DESCRIBE bed_assignments;
 
 -- Verification
 SELECT 'Missing columns fixed!' as status;
