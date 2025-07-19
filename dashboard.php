@@ -164,6 +164,14 @@ try {
                     <li><a href="settings.php"><i class="fas fa-cog"></i> Settings</a></li>
                 <?php endif; ?>
                 
+                <!-- Debug Info (Remove after testing) -->
+                <li style="background: #f0f0f0; padding: 10px; margin: 10px 0; border-radius: 5px; font-size: 12px;">
+                    <strong>Debug:</strong><br>
+                    Role: <?php echo htmlspecialchars($user_role); ?><br>
+                    Display: <?php echo htmlspecialchars($_SESSION['role_display']); ?><br>
+                    User ID: <?php echo htmlspecialchars($_SESSION['user_id']); ?>
+                </li>
+                
                 <?php if (in_array($user_role, ['patient'])): ?>
                     <li><a href="my-appointments.php"><i class="fas fa-calendar-check"></i> My Appointments</a></li>
                     <li><a href="my-prescriptions.php"><i class="fas fa-prescription"></i> My Prescriptions</a></li>
