@@ -155,6 +155,10 @@ try {
                     <li><a href="intern-management.php"><i class="fas fa-graduation-cap"></i> Intern Management</a></li>
                 <?php endif; ?>
                 
+                <?php if (in_array($user_role, ['admin', 'receptionist', 'doctor', 'nurse'])): ?>
+                    <li><a href="ambulance-management.php"><i class="fas fa-ambulance"></i> Ambulance Management</a></li>
+                <?php endif; ?>
+                
                 <?php if (in_array($user_role, ['admin', 'doctor', 'nurse', 'lab_technician', 'pharmacy_staff'])): ?>
                     <li><a href="reports.php"><i class="fas fa-chart-bar"></i> Reports</a></li>
                 <?php endif; ?>
