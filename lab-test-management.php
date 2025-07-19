@@ -130,7 +130,7 @@ $sql .= " GROUP BY lo.id ORDER BY lo.created_at DESC";
 $lab_orders = $db->query($sql, $params)->fetchAll();
 
 // Get available tests
-$available_tests = $db->query("SELECT * FROM lab_tests ORDER BY category, test_name")->fetchAll();
+$available_tests = $db->query("SELECT * FROM lab_tests ORDER BY category, name")->fetchAll();
 
 // Get patients
 $patients = $db->query("SELECT id, patient_id, CONCAT(first_name, ' ', last_name) as full_name FROM patients ORDER BY first_name")->fetchAll();

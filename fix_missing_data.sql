@@ -42,6 +42,11 @@ INSERT IGNORE INTO equipment (hospital_id, name, category, model, serial_number,
 (3, 'Ventilator', 'Life Support', 'Medtronic PB980', 'VENT001', 'Medtronic', '2023-03-20', 'operational', 'ICU', 150000.00),
 (4, 'X-Ray Machine', 'Imaging', 'Carestream DRX', 'XRAY001', 'Carestream', '2022-09-15', 'operational', 'Radiology Department', 450000.00);
 
+-- Add sample patient vitals for testing
+INSERT IGNORE INTO patient_vitals (patient_id, recorded_by, recorded_by_type, temperature, blood_pressure, heart_rate, respiratory_rate, weight, height, oxygen_saturation, notes) VALUES
+(1, 1, 'nurse', 98.6, '120/80', 72, 16, 70.5, 175.0, 98.5, 'Normal vitals recorded during routine check'),
+(1, 1, 'nurse', 99.1, '125/85', 78, 18, 70.2, 175.0, 97.8, 'Slightly elevated temperature');
+
 -- Verification query
 SELECT 'Departments' as table_name, COUNT(*) as count FROM departments
 UNION ALL
@@ -51,4 +56,6 @@ SELECT 'Beds' as table_name, COUNT(*) as count FROM beds
 UNION ALL
 SELECT 'Lab Tests' as table_name, COUNT(*) as count FROM lab_tests
 UNION ALL
-SELECT 'Equipment' as table_name, COUNT(*) as count FROM equipment;
+SELECT 'Equipment' as table_name, COUNT(*) as count FROM equipment
+UNION ALL
+SELECT 'Patient Vitals' as table_name, COUNT(*) as count FROM patient_vitals;

@@ -43,7 +43,7 @@ $sql = "SELECT p.*,
         (SELECT COUNT(*) FROM appointments WHERE patient_id = p.id AND appointment_date >= CURDATE()) as upcoming_appointments,
         (SELECT COUNT(*) FROM prescriptions WHERE patient_id = p.id AND status = 'active') as active_prescriptions,
         (SELECT COUNT(*) FROM lab_orders WHERE patient_id = p.id AND status IN ('pending', 'in_progress')) as pending_lab_tests,
-        (SELECT vital_signs FROM patient_vitals WHERE patient_id = p.id ORDER BY recorded_at DESC LIMIT 1) as latest_vitals,
+        (SELECT CONCAT('BP: ', COALESCE(blood_pressure, 'N/A'), ', HR: ', COALESCE(heart_rate, 'N/A'), ', Temp: ', COALESCE(temperature, 'N/A')) FROM patient_vitals WHERE patient_id = p.id ORDER BY recorded_at DESC LIMIT 1) as latest_vitals,
         (SELECT recorded_at FROM patient_vitals WHERE patient_id = p.id ORDER BY recorded_at DESC LIMIT 1) as last_vitals_time
         FROM patients p
         LEFT JOIN doctors d ON p.assigned_doctor_id = d.id
