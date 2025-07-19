@@ -466,18 +466,29 @@ try {
                     <h3 class="card-title">Quick Actions</h3>
                 </div>
                 <div class="d-grid" style="grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 1rem;">
-                    <a href="book-appointment.php" class="btn btn-primary">
-                        <i class="fas fa-plus"></i> Book Appointment
-                    </a>
-                    <a href="patients.php?action=add" class="btn btn-success">
-                        <i class="fas fa-user-plus"></i> Add Patient
-                    </a>
-                    <a href="billing.php?action=create" class="btn btn-warning">
-                        <i class="fas fa-file-invoice"></i> Create Bill
-                    </a>
-                    <a href="reports.php" class="btn btn-info">
-                        <i class="fas fa-chart-line"></i> View Reports
-                    </a>
+                    <?php if (in_array($user_role, ['admin', 'doctor', 'receptionist', 'intern_doctor'])): ?>
+                        <a href="book-appointment.php" class="btn btn-primary">
+                            <i class="fas fa-plus"></i> Book Appointment
+                        </a>
+                    <?php endif; ?>
+                    
+                    <?php if (in_array($user_role, ['admin', 'receptionist'])): ?>
+                        <a href="patients.php?action=add" class="btn btn-success">
+                            <i class="fas fa-user-plus"></i> Add Patient
+                        </a>
+                    <?php endif; ?>
+                    
+                    <?php if (in_array($user_role, ['admin', 'receptionist', 'pharmacy_staff', 'intern_pharmacy'])): ?>
+                        <a href="billing.php?action=create" class="btn btn-warning">
+                            <i class="fas fa-file-invoice"></i> Create Bill
+                        </a>
+                    <?php endif; ?>
+                    
+                    <?php if (in_array($user_role, ['admin', 'doctor', 'nurse', 'lab_technician', 'pharmacy_staff'])): ?>
+                        <a href="reports.php" class="btn btn-info">
+                            <i class="fas fa-chart-line"></i> View Reports
+                        </a>
+                    <?php endif; ?>
                 </div>
             </div>
         </main>
