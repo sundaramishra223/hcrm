@@ -10,7 +10,7 @@ if (!isset($_SESSION['user_id'])) {
 }
 
 $user_role = $_SESSION['role'];
-if (!in_array($user_role, ['admin', 'nurse', 'receptionist', 'doctor'])) {
+if (!in_array($user_role, ['admin', 'nurse', 'receptionist', 'doctor', 'intern_doctor', 'intern_nurse'])) {
     header('Location: dashboard.php');
     exit;
 }

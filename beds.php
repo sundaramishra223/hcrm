@@ -13,7 +13,7 @@ $user_id = $_SESSION['user_id'];
 $user_role = $_SESSION['role'];
 
 // Check if user has access to bed management
-$allowed_roles = ['admin', 'nurse', 'receptionist', 'doctor'];
+$allowed_roles = ['admin', 'nurse', 'receptionist', 'doctor', 'intern_doctor', 'intern_nurse'];
 if (!in_array($user_role, $allowed_roles)) {
     showErrorAlert('Access Denied: You do not have permission to access bed management.');
     header('Location: dashboard.php');

@@ -167,7 +167,8 @@ try {
                     <li><a href="intern-management.php"><i class="fas fa-graduation-cap"></i> Intern Management</a></li>
                 <?php endif; ?>
                 
-                <?php if (in_array($user_role, ['admin', 'nurse', 'receptionist', 'doctor'])): ?>
+                <?php if (in_array($user_role, ['admin', 'nurse', 'receptionist', 'doctor', 'intern_doctor', 'intern_nurse'])): ?>
+                    <li><a href="patient-monitoring.php"><i class="fas fa-user-injured"></i> Patient Monitoring</a></li>
                     <li><a href="equipment.php"><i class="fas fa-tools"></i> Equipment</a></li>
                     <li><a href="beds.php"><i class="fas fa-bed"></i> Bed Management</a></li>
                 <?php endif; ?>
@@ -220,9 +221,14 @@ try {
                     <p>Here's what's happening today</p>
                 </div>
                 <div class="header-right">
-                    <button class="theme-toggle" id="themeToggle" title="Toggle Dark Mode">
-                        <i class="fas fa-moon"></i>
-                    </button>
+                    <div class="theme-controls">
+                        <button class="theme-toggle" id="themeToggle" title="Toggle Dark Mode">
+                            <i class="fas fa-moon"></i>
+                        </button>
+                        <button class="color-toggle" id="colorToggle" title="Change Colors">
+                            <i class="fas fa-palette"></i>
+                        </button>
+                    </div>
                     <div class="user-info">
                         <i class="fas fa-user-circle"></i>
                         <span><?php echo htmlspecialchars($_SESSION['role_display']); ?></span>
@@ -603,10 +609,12 @@ try {
     </button>
 
     <script>
-        // Theme Toggle
+        // Theme and color controls
         const themeToggle = document.getElementById('themeToggle');
+        const colorToggle = document.getElementById('colorToggle');
         const html = document.documentElement;
-        const icon = themeToggle.querySelector('i');
+        const themeIcon = themeToggle.querySelector('i');
+        const colorIcon = colorToggle.querySelector('i');
 
         // Load saved theme
         const savedTheme = localStorage.getItem('theme') || 'light';
@@ -615,7 +623,24 @@ try {
 
         themeToggle.addEventListener('click', () => {
             const currentTheme = html.getAttribute('data-theme');
-            const newTheme = currentTheme === 'light' ? 'dark' : 'light';
+            let newTheme;
+            
+            if (currentTheme === 'light') {
+                newTheme = 'dark';
+            } else if (currentTheme === 'dark') {
+                newTheme = 'custom';
+            } else {
+                newTheme = 'light';
+            }
+            
+            html.setAttribute('data-theme', newTheme);
+            localStorage.setItem('theme', newTheme);
+            updateThemeIcon(newTheme);
+        });
+
+        colorToggle.addEventListener('click', () => {
+            const currentTheme = html.getAttribute('data-theme');
+            const newTheme = currentTheme === 'custom' ? 'light' : 'custom';
             
             html.setAttribute('data-theme', newTheme);
             localStorage.setItem('theme', newTheme);
@@ -623,7 +648,16 @@ try {
         });
 
         function updateThemeIcon(theme) {
-            icon.className = theme === 'light' ? 'fas fa-moon' : 'fas fa-sun';
+            if (theme === 'light') {
+                themeIcon.className = 'fas fa-moon';
+                colorIcon.className = 'fas fa-palette';
+            } else if (theme === 'dark') {
+                themeIcon.className = 'fas fa-sun';
+                colorIcon.className = 'fas fa-palette';
+            } else if (theme === 'custom') {
+                themeIcon.className = 'fas fa-moon';
+                colorIcon.className = 'fas fa-check';
+            }
         }
 
         // Mobile Menu Toggle
