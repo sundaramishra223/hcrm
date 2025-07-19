@@ -158,6 +158,8 @@ try {
                     <li><a href="reports.php"><i class="fas fa-chart-bar"></i> Reports</a></li>
                 <?php endif; ?>
                 
+                <li><a href="profile.php"><i class="fas fa-user"></i> My Profile</a></li>
+                
                 <?php if (in_array($user_role, ['admin'])): ?>
                     <li><a href="settings.php"><i class="fas fa-cog"></i> Settings</a></li>
                 <?php endif; ?>
