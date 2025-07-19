@@ -190,12 +190,15 @@ if ($_POST) {
             </form>
             
             <div class="demo-users">
-                <h4>Demo Login Credentials:</h4>
+                <h4>Demo Login Credentials (Click to Fill):</h4>
                 <p><strong>Admin:</strong> admin@hospital.com / password</p>
                 <p><strong>Doctor:</strong> dr.sharma@hospital.com / password</p>
-                <p><strong>Patient:</strong> john.doe@email.com / password</p>
+                <p><strong>Patient:</strong> patient.demo@hospital.com / Patient123!</p>
                 <p><strong>Nurse:</strong> priya.nurse@hospital.com / password</p>
                 <p><strong>Reception:</strong> reception@hospital.com / password</p>
+                <small style="color: #666; margin-top: 10px; display: block;">
+                    💡 Click any credential above to auto-fill the form
+                </small>
             </div>
         </div>
     </div>
@@ -214,13 +217,23 @@ if ($_POST) {
                 user.addEventListener('click', () => {
                     const text = user.textContent;
                     const emailMatch = text.match(/(\S+@\S+\.\S+)/);
-                    const passwordMatch = text.match(/password/);
                     
                     if (emailMatch) {
-                        document.getElementById('email').value = emailMatch[1];
-                        if (passwordMatch) {
+                        const email = emailMatch[1];
+                        document.getElementById('email').value = email;
+                        
+                        // Extract password based on the credential type
+                        if (email === 'patient.demo@hospital.com') {
+                            document.getElementById('password').value = 'Patient123!';
+                        } else if (text.includes('/ password')) {
                             document.getElementById('password').value = 'password';
                         }
+                        
+                        // Add visual feedback
+                        user.style.background = '#d4edda';
+                        setTimeout(() => {
+                            user.style.background = '';
+                        }, 1000);
                     }
                 });
             });
