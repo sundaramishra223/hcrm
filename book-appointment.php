@@ -19,18 +19,16 @@ $selected_patient_id = $_GET['patient_id'] ?? '';
 // Handle form submission
 if ($_POST && isset($_POST['action']) && $_POST['action'] === 'book_appointment') {
     try {
-        // Check for appointment conflicts
-        $conflict_check = $db->query(
-            "CALL CheckAppointmentConflict(?, ?, ?, ?, @conflict_count)",
+        // Check for appointment conflicts with simple query
+        $conflict_result = $db->query(
+            "SELECT COUNT(*) as conflict_count FROM appointments 
+             WHERE doctor_id = ? AND appointment_date = ? AND appointment_time = ? AND status != 'cancelled'",
             [
                 $_POST['doctor_id'],
                 $_POST['appointment_date'],
-                $_POST['appointment_time'],
-                $_POST['duration'] ?? 30
+                $_POST['appointment_time']
             ]
-        );
-        
-        $conflict_result = $db->query("SELECT @conflict_count as conflict_count")->fetch();
+        )->fetch();
         
         if ($conflict_result['conflict_count'] > 0) {
             $error = "Doctor is not available at the selected time. Please choose a different time slot.";

@@ -154,14 +154,61 @@ class AppointmentHelper {
     }
     
     /**
-     * Assign patient to doctor
+     * Assign patient to doctor and create consultation bill
      */
     public function assignPatientToDoctor($patient_id, $doctor_id) {
         try {
+            // Update patient assignment
             $this->db->query(
                 "UPDATE patients SET assigned_doctor_id = ? WHERE id = ?",
                 [$doctor_id, $patient_id]
             );
+            
+            // Get doctor's consultation fee
+            $doctor = $this->db->query(
+                "SELECT consultation_fee, CONCAT(first_name, ' ', last_name) as doctor_name FROM doctors WHERE id = ?",
+                [$doctor_id]
+            )->fetch();
+            
+            if ($doctor && $doctor['consultation_fee'] > 0) {
+                // Generate bill number
+                $bill_number = 'BILL' . date('Ymd') . sprintf('%04d', rand(1000, 9999));
+                
+                // Create consultation bill automatically
+                $this->db->query(
+                    "INSERT INTO bills (patient_id, bill_number, bill_date, bill_type, subtotal, discount_amount, tax_amount, total_amount, balance_amount, payment_status, notes, created_by) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                    [
+                        $patient_id,
+                        $bill_number,
+                        date('Y-m-d'),
+                        'consultation',
+                        $doctor['consultation_fee'],
+                        0, // no discount
+                        0, // no tax by default
+                        $doctor['consultation_fee'],
+                        $doctor['consultation_fee'], // full balance
+                        'pending',
+                        'Auto-generated consultation bill for Dr. ' . $doctor['doctor_name'],
+                        $_SESSION['user_id'] ?? 1
+                    ]
+                );
+                
+                // Get the bill ID and create bill items
+                $bill_id = $this->db->lastInsertId();
+                
+                $this->db->query(
+                    "INSERT INTO bill_items (bill_id, item_name, item_type, quantity, unit_price, total_price) VALUES (?, ?, ?, ?, ?, ?)",
+                    [
+                        $bill_id,
+                        'Consultation - Dr. ' . $doctor['doctor_name'],
+                        'consultation',
+                        1,
+                        $doctor['consultation_fee'],
+                        $doctor['consultation_fee']
+                    ]
+                );
+            }
+            
             return true;
         } catch (Exception $e) {
             error_log("Assign patient to doctor error: " . $e->getMessage());
