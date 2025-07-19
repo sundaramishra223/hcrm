@@ -170,6 +170,7 @@ CREATE TABLE patients (
     insurance_number VARCHAR(50),
     emergency_contact_name VARCHAR(100),
     emergency_contact_relation VARCHAR(50),
+    password VARCHAR(255),
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
     FOREIGN KEY (user_id) REFERENCES users(id),

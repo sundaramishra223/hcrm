@@ -27,8 +27,17 @@ if ($_POST && isset($_POST['action']) && $_POST['action'] === 'add_patient') {
         $count = $stmt->fetch()['count'] + 1;
         $patient_id = "P" . $year . str_pad($count, 4, '0', STR_PAD_LEFT);
         
+        // Validate password
+        if (empty($_POST['password']) || $_POST['password'] !== $_POST['confirm_password']) {
+            showErrorPopup("Password validation failed! Passwords must match and be at least 6 characters.");
+            exit;
+        }
+        
+        // Hash password
+        $hashed_password = password_hash($_POST['password'], PASSWORD_DEFAULT);
+        
         // Insert patient
-        $sql = "INSERT INTO patients (patient_id, first_name, middle_name, last_name, phone, emergency_contact, email, address, date_of_birth, gender, blood_group, marital_status, occupation, medical_history, allergies, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW())";
+        $sql = "INSERT INTO patients (patient_id, first_name, middle_name, last_name, phone, emergency_contact, email, address, date_of_birth, gender, blood_group, marital_status, occupation, medical_history, allergies, password, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW())";
         
         $db->query($sql, [
             $patient_id,
@@ -45,7 +54,8 @@ if ($_POST && isset($_POST['action']) && $_POST['action'] === 'add_patient') {
             $_POST['marital_status'] ?? '',
             $_POST['occupation'] ?? '',
             $_POST['medical_history'] ?? '',
-            $_POST['allergies'] ?? ''
+            $_POST['allergies'] ?? '',
+            $hashed_password
         ]);
         
         showSuccessPopup("Patient added successfully! ID: " . $patient_id, "patients.php");
@@ -508,6 +518,17 @@ if ($search) {
                         <textarea id="allergies" name="allergies" placeholder="Drug allergies, food allergies, environmental allergies..."></textarea>
                     </div>
                     
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label for="password">Password *</label>
+                            <input type="password" id="password" name="password" required minlength="6" placeholder="Minimum 6 characters">
+                        </div>
+                        <div class="form-group">
+                            <label for="confirm_password">Confirm Password *</label>
+                            <input type="password" id="confirm_password" name="confirm_password" required minlength="6" placeholder="Confirm your password">
+                        </div>
+                    </div>
+                    
                     <div style="text-align: right; margin-top: 20px;">
                         <button type="button" onclick="closeModal()" class="btn btn-secondary">Cancel</button>
                         <button type="submit" class="btn btn-primary">Add Patient</button>
@@ -533,6 +554,24 @@ if ($search) {
                 closeModal();
             }
         }
+        
+        // Password validation
+        document.querySelector('form').addEventListener('submit', function(e) {
+            const password = document.getElementById('password').value;
+            const confirmPassword = document.getElementById('confirm_password').value;
+            
+            if (password !== confirmPassword) {
+                e.preventDefault();
+                alert('❌ Passwords do not match! Please try again.');
+                return false;
+            }
+            
+            if (password.length < 6) {
+                e.preventDefault();
+                alert('❌ Password must be at least 6 characters long!');
+                return false;
+            }
+        });
     </script>
 </body>
 </html>
