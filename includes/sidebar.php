@@ -53,11 +53,21 @@ function isActive($page_names) {
             <li><a href="patient-monitoring.php" class="<?php echo isActive('patient-monitoring.php'); ?>"><i class="fas fa-user-injured"></i> Patient Monitoring</a></li>
         <?php endif; ?>
         
+        <?php if (in_array($user_role, ['admin', 'receptionist', 'doctor', 'nurse'])): ?>
+            <li><a href="ambulance-management.php" class="<?php echo isActive('ambulance-management.php'); ?>"><i class="fas fa-ambulance"></i> Ambulance</a></li>
+        <?php endif; ?>
+        
         <?php if (in_array($user_role, ['admin'])): ?>
             <li><a href="equipment.php" class="<?php echo isActive('equipment.php'); ?>"><i class="fas fa-tools"></i> Equipment</a></li>
             <li><a href="beds.php" class="<?php echo isActive('beds.php'); ?>"><i class="fas fa-bed"></i> Bed Management</a></li>
             <li><a href="intern-management.php" class="<?php echo isActive('intern-management.php'); ?>"><i class="fas fa-graduation-cap"></i> Intern Management</a></li>
             <li><a href="attendance.php" class="<?php echo isActive('attendance.php'); ?>"><i class="fas fa-clock"></i> Attendance</a></li>
+        <?php endif; ?>
+        
+        <?php if (in_array($user_role, ['driver'])): ?>
+            <li><a href="driver-dashboard.php" class="<?php echo isActive('driver-dashboard.php'); ?>"><i class="fas fa-tachometer-alt"></i> My Dashboard</a></li>
+            <li><a href="my-salary.php" class="<?php echo isActive('my-salary.php'); ?>"><i class="fas fa-money-bill-wave"></i> My Salary</a></li>
+            <li><a href="my-ambulance-trips.php" class="<?php echo isActive('my-ambulance-trips.php'); ?>"><i class="fas fa-route"></i> My Trips</a></li>
         <?php endif; ?>
         
         <li><a href="profile.php" class="<?php echo isActive('profile.php'); ?>"><i class="fas fa-user"></i> My Profile</a></li>

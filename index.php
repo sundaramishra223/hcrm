@@ -198,6 +198,7 @@ if ($_POST) {
                 <p><strong>🔬 Lab Tech:</strong> lab@demo.com / 5und@r@M</p>
                 <p><strong>👩‍💼 Receptionist:</strong> reception@hospital.com / 5und@r@M</p>
                 <p><strong>👩‍⚕️ Nurse:</strong> priya.nurse@hospital.com / 5und@r@M</p>
+                <p><strong>🚗 Driver:</strong> driver@demo.com / 5und@r@M</p>
                 <small style="color: #666; margin-top: 10px; display: block;">
                     💡 Click any credential above to auto-fill | All passwords: <strong style="color: #d63384;">5und@r@M</strong>
                 </small>
