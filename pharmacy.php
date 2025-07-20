@@ -24,6 +24,31 @@ if ($user_role === 'pharmacy_staff') {
     $pharmacy_staff_id = $staff_info['id'] ?? null;
 }
 
+// Handle category addition
+if ($_POST && isset($_POST['action']) && $_POST['action'] === 'add_category') {
+    try {
+        $category_name = trim($_POST['category_name']);
+        $category_description = trim($_POST['category_description'] ?? '');
+        
+        if (!empty($category_name)) {
+            // Insert into medicine_categories table
+            $db->query(
+                "INSERT INTO medicine_categories (hospital_id, name, description) VALUES (1, ?, ?)",
+                [$category_name, $category_description]
+            );
+            $message = "Category '$category_name' added successfully!";
+        } else {
+            $message = "Please enter a valid category name.";
+        }
+    } catch (Exception $e) {
+        if (strpos($e->getMessage(), 'Duplicate entry') !== false) {
+            $message = "Category '$category_name' already exists!";
+        } else {
+            $message = "Error adding category: " . $e->getMessage();
+        }
+    }
+}
+
 // Handle medicine addition/update
 if ($_POST && isset($_POST['action']) && $_POST['action'] === 'add_medicine') {
     try {
@@ -210,8 +235,17 @@ if (in_array($user_role, ['admin', 'pharmacy_staff'])) {
     ")->fetchAll();
 }
 
-// Get medicine categories
-$categories = $db->query("SELECT DISTINCT category FROM medicines WHERE hospital_id = 1 AND is_active = 1 ORDER BY category")->fetchAll();
+// Get medicine categories from dedicated table (fallback to medicine table if needed)
+try {
+    $categories = $db->query("SELECT name as category FROM medicine_categories WHERE hospital_id = 1 AND is_active = 1 ORDER BY name")->fetchAll();
+    if (empty($categories)) {
+        // Fallback to existing medicine categories if table is empty
+        $categories = $db->query("SELECT DISTINCT category FROM medicines WHERE hospital_id = 1 AND is_active = 1 AND category IS NOT NULL ORDER BY category")->fetchAll();
+    }
+} catch (Exception $e) {
+    // If categories table doesn't exist, use medicine table
+    $categories = $db->query("SELECT DISTINCT category FROM medicines WHERE hospital_id = 1 AND is_active = 1 AND category IS NOT NULL ORDER BY category")->fetchAll();
+}
 
 // Get pharmacy statistics
 $stats = [];
@@ -669,6 +703,7 @@ try {
             <div>
                 <a href="dashboard.php" class="btn btn-secondary">← Back to Dashboard</a>
                 <?php if (in_array($user_role, ['admin', 'pharmacy_staff'])): ?>
+                    <button onclick="openCategoryModal()" class="btn btn-success">+ Add Category</button>
                     <button onclick="openMedicineModal()" class="btn btn-primary">+ Add Medicine</button>
                 <?php endif; ?>
             </div>
@@ -1125,6 +1160,42 @@ try {
         }
     </script>
     
+    <!-- Add Category Modal -->
+    <div id="categoryModal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2>Add New Category</h2>
+                <span class="close" onclick="closeCategoryModal()">&times;</span>
+            </div>
+            <form method="POST">
+                <div class="modal-body">
+                    <input type="hidden" name="action" value="add_category">
+                    
+                    <div class="form-group">
+                        <label for="category_name">Category Name *</label>
+                        <input type="text" id="category_name" name="category_name" required 
+                               placeholder="e.g., Antibiotics, Pain Relief, Vitamins">
+                    </div>
+                    
+                    <div class="form-group">
+                        <label for="category_description">Description (Optional)</label>
+                        <textarea id="category_description" name="category_description" rows="3"
+                                placeholder="Brief description of this category..."></textarea>
+                    </div>
+                    
+                    <div class="alert" style="background: #e7f3ff; color: #004085; border: 1px solid #b6d7ff;">
+                        <strong>📝 Note:</strong> New category will be immediately available for selecting when adding medicines.
+                    </div>
+                </div>
+                
+                <div style="padding: 20px; border-top: 1px solid #e1e1e1; text-align: right;">
+                    <button type="button" onclick="closeCategoryModal()" class="btn btn-secondary" style="margin-right: 10px;">Cancel</button>
+                    <button type="submit" class="btn btn-success">Add Category</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
     <!-- Theme Toggle -->
     <div class="theme-toggle">
         <div class="theme-option" data-theme="light" onclick="setTheme('light')" title="Light Theme"></div>
@@ -1154,6 +1225,23 @@ try {
             const savedTheme = localStorage.getItem('theme') || 'light';
             setTheme(savedTheme);
         });
+        
+        // Category Modal Functions
+        function openCategoryModal() {
+            document.getElementById('categoryModal').style.display = 'block';
+        }
+        
+        function closeCategoryModal() {
+            document.getElementById('categoryModal').style.display = 'none';
+        }
+        
+        // Close modal when clicking outside
+        window.onclick = function(event) {
+            const categoryModal = document.getElementById('categoryModal');
+            if (event.target === categoryModal) {
+                closeCategoryModal();
+            }
+        }
     </script>
 </body>
 </html>
