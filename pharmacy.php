@@ -1124,5 +1124,36 @@ try {
             }
         }
     </script>
+    
+    <!-- Theme Toggle -->
+    <div class="theme-toggle">
+        <div class="theme-option" data-theme="light" onclick="setTheme('light')" title="Light Theme"></div>
+        <div class="theme-option" data-theme="dark" onclick="setTheme('dark')" title="Dark Theme"></div>
+        <div class="theme-option" data-theme="medical" onclick="setTheme('medical')" title="Medical Theme"></div>
+    </div>
+    
+    <script>
+        // Theme Management
+        function setTheme(theme) {
+            document.documentElement.setAttribute('data-theme', theme);
+            localStorage.setItem('theme', theme);
+            updateThemeToggle(theme);
+        }
+        
+        function updateThemeToggle(activeTheme) {
+            document.querySelectorAll('.theme-option').forEach(option => {
+                option.classList.remove('active');
+                if (option.dataset.theme === activeTheme) {
+                    option.classList.add('active');
+                }
+            });
+        }
+        
+        // Initialize theme
+        document.addEventListener('DOMContentLoaded', function() {
+            const savedTheme = localStorage.getItem('theme') || 'light';
+            setTheme(savedTheme);
+        });
+    </script>
 </body>
 </html>
