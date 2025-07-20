@@ -36,24 +36,18 @@ if ($_POST && isset($_POST['action']) && $_POST['action'] === 'book_appointment'
             // Generate appointment number
             $appointment_number = 'APT' . date('Ymd') . sprintf('%04d', rand(1000, 9999));
             
-            // Insert appointment
-            $sql = "INSERT INTO appointments (hospital_id, patient_id, doctor_id, appointment_number, appointment_date, appointment_time, duration_minutes, appointment_type, chief_complaint, notes, consultation_fee, created_by) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
-            
-            // Get doctor's consultation fee
-            $doctor_fee = $db->query("SELECT consultation_fee FROM doctors WHERE id = ?", [$_POST['doctor_id']])->fetch()['consultation_fee'];
+            // Insert appointment with basic columns only
+            $sql = "INSERT INTO appointments (hospital_id, patient_id, doctor_id, appointment_date, appointment_time, appointment_type, status, notes, created_by) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)";
             
             $db->query($sql, [
                 1, // hospital_id
                 $_POST['patient_id'],
                 $_POST['doctor_id'],
-                $appointment_number,
                 $_POST['appointment_date'],
                 $_POST['appointment_time'],
-                $_POST['duration'] ?? 30,
                 $_POST['appointment_type'],
-                $_POST['chief_complaint'],
-                $_POST['notes'],
-                $doctor_fee,
+                'scheduled', // default status
+                $_POST['notes'] ?? 'Appointment booked via system',
                 $_SESSION['user_id']
             ]);
             
