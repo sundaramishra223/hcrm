@@ -61,6 +61,9 @@ if ($_POST && isset($_POST['action']) && $_POST['action'] === 'book_appointment'
         }
     } catch (Exception $e) {
         $error = "Error booking appointment: " . $e->getMessage();
+        // Debug info
+        error_log("Appointment booking error: " . $e->getMessage());
+        error_log("POST data: " . print_r($_POST, true));
     }
 }
 
