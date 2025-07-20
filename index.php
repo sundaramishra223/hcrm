@@ -205,8 +205,7 @@ if ($_POST) {
         </div>
     </div>
 
-    <!-- Password Validation Script -->
-    <script src="includes/password-validation.js"></script>
+    <!-- No password validation on login page -->
     <script>
         // Theme support for login page
         const savedTheme = localStorage.getItem('theme') || 'light';
