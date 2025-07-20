@@ -41,7 +41,7 @@ ON DUPLICATE KEY UPDATE
 INSERT INTO staff (user_id, hospital_id, employee_id, first_name, last_name, staff_type, is_active) VALUES
 (@pharmacy_id, 1, 'PHAR001', 'Pharmacy', 'Staff', 'pharmacy_staff', 1),
 (@lab_id, 1, 'LAB001', 'Lab', 'Technician', 'lab_technician', 1),
-(@reception_id, 1, 'REC001', 'Reception', 'Staff', 'reception_staff', 1),
+(@reception_id, 1, 'REC001', 'Reception', 'Staff', 'receptionist', 1),
 (@nurse_id, 1, 'NUR001', 'Priya', 'Nurse', 'nurse', 1)
 ON DUPLICATE KEY UPDATE 
     is_active = 1;
