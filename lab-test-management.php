@@ -52,7 +52,7 @@ if ($_POST) {
                     $order_number,
                     $_POST['order_date'],
                     $_POST['priority'],
-                    $_POST['notes'],
+                    $_POST['notes'] ?? '', // Form field is 'notes', database column is 'clinical_notes'
                     $_SESSION['user_id']
                 ]);
                 $last_order_id = $db->lastInsertId();
