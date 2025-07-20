@@ -39,19 +39,22 @@ $usage_history = [];
 if ($medicine) {
     try {
         $usage_history = $db->query(
-            "SELECT pi.*, p.patient_id, CONCAT(p.first_name, ' ', p.last_name) as patient_name,
+            "SELECT pm.*, p.patient_id, CONCAT(p.first_name, ' ', p.last_name) as patient_name,
                     pr.id as prescription_id, pr.prescribed_date,
-                    CONCAT(d.first_name, ' ', d.last_name) as doctor_name
-             FROM prescription_items pi
-             JOIN prescriptions pr ON pi.prescription_id = pr.id
+                    CONCAT(d.first_name, ' ', d.last_name) as doctor_name,
+                    m.name as medicine_name
+             FROM prescription_medicines pm
+             JOIN prescriptions pr ON pm.prescription_id = pr.id
              JOIN patients p ON pr.patient_id = p.id
+             JOIN medicines m ON pm.medicine_id = m.id
              LEFT JOIN doctors d ON pr.doctor_id = d.id
-             WHERE pi.medicine_name LIKE ? OR pi.medicine_id = ?
+             WHERE pm.medicine_id = ?
              ORDER BY pr.prescribed_date DESC
              LIMIT 20",
-            ['%' . $medicine['name'] . '%', $medicine_id]
+            [$medicine_id]
         )->fetchAll();
     } catch (Exception $e) {
+        $usage_history = [];
         // Ignore if table doesn't exist or error occurs
     }
 }
