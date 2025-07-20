@@ -36,8 +36,8 @@ if ($_POST && isset($_POST['action']) && $_POST['action'] === 'book_appointment'
             // Generate appointment number
             $appointment_number = 'APT' . date('Ymd') . sprintf('%04d', rand(1000, 9999));
             
-            // Insert appointment with basic columns only
-            $sql = "INSERT INTO appointments (hospital_id, patient_id, doctor_id, appointment_date, appointment_time, appointment_type, status, notes, created_by) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)";
+            // Insert appointment with exact table columns
+            $sql = "INSERT INTO appointments (hospital_id, patient_id, doctor_id, appointment_date, appointment_time, appointment_type, status, reason, notes, created_by) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
             
             $db->query($sql, [
                 1, // hospital_id
@@ -45,13 +45,14 @@ if ($_POST && isset($_POST['action']) && $_POST['action'] === 'book_appointment'
                 $_POST['doctor_id'],
                 $_POST['appointment_date'],
                 $_POST['appointment_time'],
-                $_POST['appointment_type'],
+                $_POST['appointment_type'] ?? 'consultation',
                 'scheduled', // default status
-                $_POST['notes'] ?? 'Appointment booked via system',
+                $_POST['chief_complaint'] ?? 'General consultation',
+                $_POST['notes'] ?? 'Appointment booked online',
                 $_SESSION['user_id']
             ]);
             
-            $message = "Appointment booked successfully! Appointment Number: " . $appointment_number;
+            $message = "✅ Appointment booked successfully for " . $_POST['appointment_date'] . " at " . $_POST['appointment_time'] . "!";
         }
     } catch (Exception $e) {
         $error = "Error booking appointment: " . $e->getMessage();
