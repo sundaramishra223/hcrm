@@ -41,11 +41,15 @@ if ($_POST) {
                 break;
 
             case 'create_order':
+                // Generate order number
+                $order_number = 'LAB' . date('Ymd') . sprintf('%04d', rand(1000, 9999));
+                
                 // Create lab order
-                $order_sql = "INSERT INTO lab_orders (patient_id, doctor_id, order_date, status, priority, notes, created_by) VALUES (?, ?, ?, 'pending', ?, ?, ?)";
+                $order_sql = "INSERT INTO lab_orders (patient_id, doctor_id, order_number, order_date, status, priority, clinical_notes, created_by) VALUES (?, ?, ?, ?, 'pending', ?, ?, ?)";
                 $order_id = $db->query($order_sql, [
                     $_POST['patient_id'],
                     $_POST['doctor_id'],
+                    $order_number,
                     $_POST['order_date'],
                     $_POST['priority'],
                     $_POST['notes'],
@@ -56,8 +60,16 @@ if ($_POST) {
                 // Add test items to order
                 if (isset($_POST['selected_tests']) && is_array($_POST['selected_tests'])) {
                     foreach ($_POST['selected_tests'] as $test_id) {
-                        $test_sql = "INSERT INTO lab_order_tests (order_id, test_id, status, created_at) VALUES (?, ?, 'pending', NOW())";
-                        $db->query($test_sql, [$last_order_id, $test_id]);
+                        // Get test details
+                        $test_info = $db->query("SELECT name, cost FROM lab_tests WHERE id = ?", [$test_id])->fetch();
+                        
+                        $test_sql = "INSERT INTO lab_order_tests (lab_order_id, lab_test_id, test_name, cost, status) VALUES (?, ?, ?, ?, 'pending')";
+                        $db->query($test_sql, [
+                            $last_order_id, 
+                            $test_id, 
+                            $test_info['name'] ?? 'Lab Test',
+                            $test_info['cost'] ?? 0
+                        ]);
                     }
                 }
                 $message = "Lab order created successfully!";
