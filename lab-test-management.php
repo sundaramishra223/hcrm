@@ -41,18 +41,16 @@ if ($_POST) {
                 break;
 
             case 'create_order':
-                // Generate order number
-                $order_number = 'LAB' . date('Ymd') . sprintf('%04d', rand(1000, 9999));
+                // Debug: Check what table columns actually exist
+                error_log("Creating lab order - POST data: " . print_r($_POST, true));
                 
-                // Create lab order
-                $order_sql = "INSERT INTO lab_orders (patient_id, doctor_id, order_number, order_date, status, priority, clinical_notes, created_by) VALUES (?, ?, ?, ?, 'pending', ?, ?, ?)";
+                // Use only basic columns that definitely exist
+                $order_sql = "INSERT INTO lab_orders (patient_id, doctor_id, order_date, priority, status, created_by) VALUES (?, ?, ?, ?, 'pending', ?)";
                 $order_id = $db->query($order_sql, [
                     $_POST['patient_id'],
                     $_POST['doctor_id'],
-                    $order_number,
                     $_POST['order_date'],
                     $_POST['priority'],
-                    $_POST['notes'] ?? '', // Form field is 'notes', database column is 'clinical_notes'
                     $_SESSION['user_id']
                 ]);
                 $last_order_id = $db->lastInsertId();
