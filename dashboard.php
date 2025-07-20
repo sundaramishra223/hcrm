@@ -59,7 +59,7 @@ try {
         $stats['abnormal_results'] = $db->query("SELECT COUNT(*) as count FROM lab_order_tests WHERE is_abnormal = 1 AND DATE(completed_at) = CURDATE()")->fetch()['count'];
     } elseif ($user_role === 'pharmacy_staff') {
         $stats['total_medicines'] = $db->query("SELECT COUNT(*) as count FROM medicines")->fetch()['count'];
-        $stats['low_stock_medicines'] = $db->query("SELECT COUNT(*) as count FROM medicines WHERE current_stock <= reorder_level")->fetch()['count'];
+        $stats['low_stock_medicines'] = $db->query("SELECT COUNT(*) as count FROM medicines WHERE stock_quantity <= min_stock_level")->fetch()['count'];
         $stats['today_prescriptions'] = $db->query("SELECT COUNT(*) as count FROM prescriptions WHERE DATE(created_at) = CURDATE()")->fetch()['count'];
         $stats['pending_dispensing'] = $db->query("SELECT COUNT(*) as count FROM prescription_medicines WHERE dispensed_quantity < quantity")->fetch()['count'];
     } elseif ($user_role === 'intern_doctor') {
@@ -82,7 +82,7 @@ try {
         $stats['total_tests'] = $db->query("SELECT COUNT(*) as count FROM lab_order_tests")->fetch()['count'];
     } elseif ($user_role === 'intern_pharmacy') {
         $stats['total_medicines'] = $db->query("SELECT COUNT(*) as count FROM medicines")->fetch()['count'];
-        $stats['low_stock_medicines'] = $db->query("SELECT COUNT(*) as count FROM medicines WHERE current_stock <= reorder_level")->fetch()['count'];
+        $stats['low_stock_medicines'] = $db->query("SELECT COUNT(*) as count FROM medicines WHERE stock_quantity <= min_stock_level")->fetch()['count'];
         $stats['today_prescriptions'] = $db->query("SELECT COUNT(*) as count FROM prescriptions WHERE DATE(created_at) = CURDATE()")->fetch()['count'];
     }
 } catch (Exception $e) {
@@ -921,5 +921,36 @@ try {
             }
         }
     </style>
+    
+    <!-- Theme Toggle -->
+    <div class="theme-toggle">
+        <div class="theme-option" data-theme="light" onclick="setTheme('light')" title="Light Theme"></div>
+        <div class="theme-option" data-theme="dark" onclick="setTheme('dark')" title="Dark Theme"></div>
+        <div class="theme-option" data-theme="medical" onclick="setTheme('medical')" title="Medical Theme"></div>
+    </div>
+    
+    <script>
+        // Theme Management
+        function setTheme(theme) {
+            document.documentElement.setAttribute('data-theme', theme);
+            localStorage.setItem('theme', theme);
+            updateThemeToggle(theme);
+        }
+        
+        function updateThemeToggle(activeTheme) {
+            document.querySelectorAll('.theme-option').forEach(option => {
+                option.classList.remove('active');
+                if (option.dataset.theme === activeTheme) {
+                    option.classList.add('active');
+                }
+            });
+        }
+        
+        // Initialize theme
+        document.addEventListener('DOMContentLoaded', function() {
+            const savedTheme = localStorage.getItem('theme') || 'light';
+            setTheme(savedTheme);
+        });
+    </script>
 </body>
 </html>

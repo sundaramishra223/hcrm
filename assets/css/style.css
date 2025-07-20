@@ -1926,6 +1926,116 @@ a:hover {
     -ms-user-select: none;
 }
 
+/* =============================================
+   MEDICAL THEME
+   ============================================= */
+[data-theme="medical"] {
+    --primary-color: #00796b;
+    --primary-hover: #004d40;
+    --primary-light: #26a69a;
+    --secondary-color: #2e7d32;
+    --secondary-hover: #1b5e20;
+    --accent-color: #0288d1;
+    --accent-hover: #01579b;
+    
+    --success-color: #388e3c;
+    --warning-color: #f57c00;
+    --danger-color: #d32f2f;
+    --info-color: #1976d2;
+    
+    --bg-primary: #f8fffe;
+    --bg-secondary: #e0f2f1;
+    --bg-tertiary: #b2dfdb;
+    --bg-card: rgba(248, 255, 254, 0.95);
+    --bg-glass: rgba(0, 121, 107, 0.1);
+    --bg-sidebar: linear-gradient(135deg, #00796b 0%, #004d40 100%);
+    --bg-header: rgba(248, 255, 254, 0.95);
+    
+    --text-primary: #263238;
+    --text-secondary: #455a64;
+    --text-muted: #78909c;
+    
+    --border-color: #b2dfdb;
+    --border-light: #e0f2f1;
+    --border-focus: #00796b;
+}
+
+/* Dark Theme */
+[data-theme="dark"] {
+    --primary-color: #3b82f6;
+    --primary-hover: #2563eb;
+    --primary-light: #60a5fa;
+    --secondary-color: #10b981;
+    --secondary-hover: #059669;
+    --accent-color: #f59e0b;
+    --accent-hover: #d97706;
+    
+    --success-color: #10b981;
+    --warning-color: #f59e0b;
+    --danger-color: #ef4444;
+    --info-color: #3b82f6;
+    
+    --bg-primary: #0f172a;
+    --bg-secondary: #1e293b;
+    --bg-tertiary: #334155;
+    --bg-card: rgba(30, 41, 59, 0.9);
+    --bg-glass: rgba(15, 23, 42, 0.8);
+    --bg-sidebar: linear-gradient(135deg, #1e293b 0%, #0f172a 100%);
+    --bg-header: rgba(15, 23, 42, 0.95);
+    
+    --text-primary: #f1f5f9;
+    --text-secondary: #cbd5e1;
+    --text-muted: #94a3b8;
+    --text-white: #f1f5f9;
+    --text-inverse: #0f172a;
+    
+    --border-color: #334155;
+    --border-light: #475569;
+    --border-focus: #3b82f6;
+}
+
+/* Theme Toggle Button */
+.theme-toggle {
+    position: fixed;
+    top: 20px;
+    right: 20px;
+    background: var(--bg-card);
+    border: 2px solid var(--border-color);
+    border-radius: 50px;
+    padding: 8px;
+    display: flex;
+    gap: 5px;
+    box-shadow: var(--shadow-lg);
+    z-index: 1000;
+}
+
+.theme-option {
+    width: 30px;
+    height: 30px;
+    border-radius: 50%;
+    border: 2px solid transparent;
+    cursor: pointer;
+    transition: all 0.3s ease;
+    position: relative;
+}
+
+.theme-option.active {
+    border-color: var(--primary-color);
+    transform: scale(1.1);
+}
+
+.theme-option[data-theme="light"] {
+    background: linear-gradient(135deg, #ffffff 0%, #f8fafc 100%);
+}
+
+.theme-option[data-theme="dark"] {
+    background: linear-gradient(135deg, #1e293b 0%, #0f172a 100%);
+}
+
+.theme-option[data-theme="medical"] {
+    background: linear-gradient(135deg, #00796b 0%, #004d40 100%);
+}
+
 /* Enhanced Print Styles */
 @media print {
     .password-requirements,
@@ -1933,7 +2043,8 @@ a:hover {
     .password-toggle-container,
     .notification-container,
     .tooltip::before,
-    .tooltip::after {
+    .tooltip::after,
+    .theme-toggle {
         display: none !important;
     }
     
