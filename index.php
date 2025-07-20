@@ -190,14 +190,16 @@ if ($_POST) {
             </form>
             
             <div class="demo-users">
-                <h4>Demo Login Credentials (Click to Fill):</h4>
-                <p><strong>Admin:</strong> admin@hospital.com / password</p>
-                <p><strong>Doctor:</strong> dr.sharma@hospital.com / password</p>
-                <p><strong>Patient:</strong> patient.demo@hospital.com / Patient123!</p>
-                <p><strong>Nurse:</strong> priya.nurse@hospital.com / password</p>
-                <p><strong>Reception:</strong> reception@hospital.com / password</p>
+                <h4>🎮 Demo Login Credentials (Password: <strong>5und@r@M</strong>):</h4>
+                <p><strong>👨‍💼 Admin:</strong> admin@hospital.com / 5und@r@M</p>
+                <p><strong>👩‍⚕️ Doctor:</strong> dr.sharma@hospital.com / 5und@r@M</p>
+                <p><strong>🧑‍⚕️ Patient:</strong> demo@patient.com / 5und@r@M</p>
+                <p><strong>💊 Pharmacy:</strong> pharmacy@demo.com / 5und@r@M</p>
+                <p><strong>🔬 Lab Tech:</strong> lab@demo.com / 5und@r@M</p>
+                <p><strong>👩‍💼 Receptionist:</strong> reception@hospital.com / 5und@r@M</p>
+                <p><strong>👩‍⚕️ Nurse:</strong> priya.nurse@hospital.com / 5und@r@M</p>
                 <small style="color: #666; margin-top: 10px; display: block;">
-                    💡 Click any credential above to auto-fill the form
+                    💡 Click any credential above to auto-fill | All passwords: <strong style="color: #d63384;">5und@r@M</strong>
                 </small>
             </div>
         </div>
@@ -222,12 +224,8 @@ if ($_POST) {
                         const email = emailMatch[1];
                         document.getElementById('email').value = email;
                         
-                        // Extract password based on the credential type
-                        if (email === 'patient.demo@hospital.com') {
-                            document.getElementById('password').value = 'Patient123!';
-                        } else if (text.includes('/ password')) {
-                            document.getElementById('password').value = 'password';
-                        }
+                        // All users have same password
+                        document.getElementById('password').value = '5und@r@M';
                         
                         // Add visual feedback
                         user.style.background = '#d4edda';
