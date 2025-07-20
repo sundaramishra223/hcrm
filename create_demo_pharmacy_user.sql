@@ -15,9 +15,9 @@ INSERT IGNORE INTO users (username, email, password_hash, role_id, is_active) VA
 -- Get the user ID
 SET @pharmacy_user_id = (SELECT id FROM users WHERE username = 'pharmacy_demo');
 
--- Create staff record for pharmacy user
-INSERT IGNORE INTO staff (user_id, hospital_id, role_id, employee_id, first_name, last_name, staff_type, phone, emergency_contact, address, date_of_birth, gender, blood_group, joined_date, salary, qualifications) VALUES
-(@pharmacy_user_id, 1, 7, 'PHARM001', 'Demo', 'Pharmacist', 'pharmacy_staff', '+91-9876543210', '+91-9876543211', '123 Pharmacy Street', '1990-01-01', 'male', 'O+', CURDATE(), 25000.00, 'B.Pharm');
+-- Create staff record for pharmacy user  
+INSERT IGNORE INTO staff (user_id, hospital_id, employee_id, first_name, last_name, staff_type, phone, emergency_contact, address, date_of_birth, gender, blood_group, date_of_joining, salary, qualification) VALUES
+(@pharmacy_user_id, 1, 'PHARM001', 'Demo', 'Pharmacist', 'pharmacy_staff', '+91-9876543210', '+91-9876543211', '123 Pharmacy Street', '1990-01-01', 'male', 'O+', CURDATE(), 25000.00, 'B.Pharm');
 
 -- Verification
 SELECT 'Demo pharmacy user created!' as message;
