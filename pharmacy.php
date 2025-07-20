@@ -807,7 +807,7 @@ try {
                                             <button onclick="openStockModal(<?php echo $medicine['id']; ?>, '<?php echo htmlspecialchars($medicine['name']); ?>', <?php echo $medicine['stock_quantity']; ?>)" 
                                                     class="btn btn-warning btn-sm">Update Stock</button>
                                         <?php endif; ?>
-                                        <button onclick="viewMedicine(<?php echo $medicine['id']; ?>)" class="btn btn-primary btn-sm">View Details</button>
+                                        <a href="medicine-details.php?id=<?php echo $medicine['id']; ?>" class="btn btn-primary btn-sm">View Details</a>
                                     </div>
                                 </div>
                             </div>
