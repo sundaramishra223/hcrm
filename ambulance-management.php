@@ -35,16 +35,16 @@ if ($_POST) {
         try {
             switch ($_POST['action']) {
                 case 'add_ambulance':
-                    $sql = "INSERT INTO ambulances (vehicle_number, vehicle_type, driver_name, driver_phone, capacity, equipment, status, location, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, NOW())";
+                    $sql = "INSERT INTO ambulances (hospital_id, vehicle_number, vehicle_type, driver_name, driver_phone, capacity, equipment, status, location, created_at) VALUES (1, ?, ?, ?, ?, ?, ?, ?, ?, NOW())";
                     $db->query($sql, [
                         $_POST['vehicle_number'],
                         $_POST['vehicle_type'],
                         $_POST['driver_name'],
                         $_POST['driver_phone'],
-                        $_POST['capacity'],
-                        $_POST['equipment'],
+                        $_POST['capacity'] ?? 4,
+                        $_POST['equipment'] ?? 'Basic Life Support',
                         $_POST['status'],
-                        $_POST['location']
+                        $_POST['location'] ?? 'Hospital'
                     ]);
                     showSuccessPopup("Ambulance added successfully!", "ambulance-management.php");
                     break;

@@ -132,5 +132,31 @@ SELECT
     'Features: Medicine categories, Demo users, Theme system' as features;
 
 -- =============================================
+-- 7. FIX AMBULANCE TABLE (BONUS)
+-- =============================================
+
+-- Add missing columns to ambulances table if it exists
+SET @sql = CONCAT(
+    'ALTER TABLE ambulances ',
+    'ADD COLUMN IF NOT EXISTS capacity INT DEFAULT 4, ',
+    'ADD COLUMN IF NOT EXISTS equipment TEXT, ',
+    'ADD COLUMN IF NOT EXISTS location VARCHAR(255)'
+);
+
+-- Only run if ambulances table exists
+SET @table_exists = (
+    SELECT COUNT(*)
+    FROM INFORMATION_SCHEMA.TABLES 
+    WHERE table_name = 'ambulances' 
+    AND table_schema = DATABASE()
+);
+
+SET @sql = IF(@table_exists > 0, @sql, 'SELECT "ambulances table does not exist" as info');
+
+PREPARE stmt FROM @sql;
+EXECUTE stmt;
+DEALLOCATE PREPARE stmt;
+
+-- =============================================
 -- END - KEEP IT SIMPLE!
 -- =============================================
