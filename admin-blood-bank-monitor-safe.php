@@ -18,12 +18,12 @@ $blood_bank_setup = !empty($table_check);
 // Get basic hospital statistics (always available)
 $basic_stats_query = "
     SELECT 
-        (SELECT COUNT(*) FROM patients WHERE is_active = 1) as total_patients,
-        (SELECT COUNT(*) FROM doctors WHERE is_available = 1) as active_doctors,
-        (SELECT COUNT(*) FROM staff WHERE is_active = 1) as active_staff,
+        (SELECT COUNT(*) FROM patients) as total_patients,
+        (SELECT COUNT(*) FROM doctors) as active_doctors,
+        (SELECT COUNT(*) FROM staff) as active_staff,
         (SELECT COUNT(*) FROM appointments WHERE DATE(appointment_date) = CURDATE()) as today_appointments,
         (SELECT COUNT(*) FROM bills WHERE payment_status = 'pending') as pending_bills,
-        (SELECT SUM(balance_amount) FROM bills WHERE payment_status != 'paid') as outstanding_amount
+        (SELECT IFNULL(SUM(balance_amount), 0) FROM bills WHERE payment_status != 'paid') as outstanding_amount
 ";
 $basic_stats = $db->query($basic_stats_query)->fetch();
 
@@ -40,12 +40,12 @@ if ($blood_bank_setup) {
         // Get blood bank statistics
         $blood_stats_query = "
             SELECT 
-                (SELECT COUNT(*) FROM blood_donors WHERE is_active = 1) as active_donors,
-                (SELECT COUNT(*) FROM blood_inventory WHERE status = 'available') as available_units,
-                (SELECT COUNT(*) FROM blood_donation_sessions WHERE DATE(collection_date) = CURDATE()) as today_donations,
-                (SELECT COUNT(*) FROM blood_usage_records WHERE DATE(usage_date) = CURDATE()) as today_usage,
-                (SELECT COUNT(*) FROM blood_requests WHERE status = 'pending') as pending_requests,
-                (SELECT COUNT(*) FROM blood_inventory WHERE status = 'available' AND expiry_date <= DATE_ADD(CURDATE(), INTERVAL 7 DAY)) as expiring_soon
+                (SELECT IFNULL(COUNT(*), 0) FROM blood_donors WHERE is_active = 1) as active_donors,
+                (SELECT IFNULL(COUNT(*), 0) FROM blood_inventory WHERE status = 'available') as available_units,
+                (SELECT IFNULL(COUNT(*), 0) FROM blood_donation_sessions WHERE DATE(collection_date) = CURDATE()) as today_donations,
+                (SELECT IFNULL(COUNT(*), 0) FROM blood_usage_records WHERE DATE(usage_date) = CURDATE()) as today_usage,
+                (SELECT IFNULL(COUNT(*), 0) FROM blood_requests WHERE status = 'pending') as pending_requests,
+                (SELECT IFNULL(COUNT(*), 0) FROM blood_inventory WHERE status = 'available' AND expiry_date <= DATE_ADD(CURDATE(), INTERVAL 7 DAY)) as expiring_soon
         ";
         $blood_stats = $db->query($blood_stats_query)->fetch();
 
@@ -219,7 +219,7 @@ if ($blood_bank_setup) {
                         <div class="card stat-card border-primary">
                             <div class="card-body text-center">
                                 <i class="fas fa-users fa-2x text-primary mb-2"></i>
-                                <h4 class="text-primary"><?php echo $basic_stats['total_patients']; ?></h4>
+                                <h4 class="text-primary"><?php echo $basic_stats['total_patients'] ?? 0; ?></h4>
                                 <small class="text-muted">Total Patients</small>
                             </div>
                         </div>
@@ -228,7 +228,7 @@ if ($blood_bank_setup) {
                         <div class="card stat-card border-success">
                             <div class="card-body text-center">
                                 <i class="fas fa-user-md fa-2x text-success mb-2"></i>
-                                <h4 class="text-success"><?php echo $basic_stats['active_doctors']; ?></h4>
+                                <h4 class="text-success"><?php echo $basic_stats['active_doctors'] ?? 0; ?></h4>
                                 <small class="text-muted">Active Doctors</small>
                             </div>
                         </div>
@@ -237,7 +237,7 @@ if ($blood_bank_setup) {
                         <div class="card stat-card border-info">
                             <div class="card-body text-center">
                                 <i class="fas fa-user-nurse fa-2x text-info mb-2"></i>
-                                <h4 class="text-info"><?php echo $basic_stats['active_staff']; ?></h4>
+                                <h4 class="text-info"><?php echo $basic_stats['active_staff'] ?? 0; ?></h4>
                                 <small class="text-muted">Active Staff</small>
                             </div>
                         </div>
@@ -246,7 +246,7 @@ if ($blood_bank_setup) {
                         <div class="card stat-card border-warning">
                             <div class="card-body text-center">
                                 <i class="fas fa-calendar fa-2x text-warning mb-2"></i>
-                                <h4 class="text-warning"><?php echo $basic_stats['today_appointments']; ?></h4>
+                                <h4 class="text-warning"><?php echo $basic_stats['today_appointments'] ?? 0; ?></h4>
                                 <small class="text-muted">Today's Appointments</small>
                             </div>
                         </div>
@@ -255,7 +255,7 @@ if ($blood_bank_setup) {
                         <div class="card stat-card border-danger">
                             <div class="card-body text-center">
                                 <i class="fas fa-file-invoice fa-2x text-danger mb-2"></i>
-                                <h4 class="text-danger"><?php echo $basic_stats['pending_bills']; ?></h4>
+                                <h4 class="text-danger"><?php echo $basic_stats['pending_bills'] ?? 0; ?></h4>
                                 <small class="text-muted">Pending Bills</small>
                             </div>
                         </div>
@@ -264,7 +264,7 @@ if ($blood_bank_setup) {
                         <div class="card stat-card border-dark">
                             <div class="card-body text-center">
                                 <i class="fas fa-rupee-sign fa-2x text-dark mb-2"></i>
-                                <h4 class="text-dark">₹<?php echo number_format($basic_stats['outstanding_amount'], 0); ?></h4>
+                                <h4 class="text-dark">₹<?php echo number_format($basic_stats['outstanding_amount'] ?? 0, 0); ?></h4>
                                 <small class="text-muted">Outstanding Amount</small>
                             </div>
                         </div>
@@ -281,7 +281,7 @@ if ($blood_bank_setup) {
                         <div class="card stat-card border-primary">
                             <div class="card-body text-center">
                                 <i class="fas fa-heart fa-2x text-primary mb-2"></i>
-                                <h4 class="text-primary"><?php echo $blood_stats['active_donors']; ?></h4>
+                                <h4 class="text-primary"><?php echo $blood_stats['active_donors'] ?? 0; ?></h4>
                                 <small class="text-muted">Active Donors</small>
                             </div>
                         </div>
@@ -290,7 +290,7 @@ if ($blood_bank_setup) {
                         <div class="card stat-card border-success">
                             <div class="card-body text-center">
                                 <i class="fas fa-vial fa-2x text-success mb-2"></i>
-                                <h4 class="text-success"><?php echo $blood_stats['available_units']; ?></h4>
+                                <h4 class="text-success"><?php echo $blood_stats['available_units'] ?? 0; ?></h4>
                                 <small class="text-muted">Available Units</small>
                             </div>
                         </div>
@@ -299,7 +299,7 @@ if ($blood_bank_setup) {
                         <div class="card stat-card border-info">
                             <div class="card-body text-center">
                                 <i class="fas fa-plus fa-2x text-info mb-2"></i>
-                                <h4 class="text-info"><?php echo $blood_stats['today_donations']; ?></h4>
+                                <h4 class="text-info"><?php echo $blood_stats['today_donations'] ?? 0; ?></h4>
                                 <small class="text-muted">Today's Donations</small>
                             </div>
                         </div>
@@ -308,7 +308,7 @@ if ($blood_bank_setup) {
                         <div class="card stat-card border-warning">
                             <div class="card-body text-center">
                                 <i class="fas fa-minus fa-2x text-warning mb-2"></i>
-                                <h4 class="text-warning"><?php echo $blood_stats['today_usage']; ?></h4>
+                                <h4 class="text-warning"><?php echo $blood_stats['today_usage'] ?? 0; ?></h4>
                                 <small class="text-muted">Today's Usage</small>
                             </div>
                         </div>
@@ -317,7 +317,7 @@ if ($blood_bank_setup) {
                         <div class="card stat-card border-danger">
                             <div class="card-body text-center">
                                 <i class="fas fa-clock fa-2x text-danger mb-2"></i>
-                                <h4 class="text-danger"><?php echo $blood_stats['pending_requests']; ?></h4>
+                                <h4 class="text-danger"><?php echo $blood_stats['pending_requests'] ?? 0; ?></h4>
                                 <small class="text-muted">Pending Requests</small>
                             </div>
                         </div>
@@ -326,7 +326,7 @@ if ($blood_bank_setup) {
                         <div class="card stat-card border-secondary">
                             <div class="card-body text-center">
                                 <i class="fas fa-exclamation-triangle fa-2x text-secondary mb-2"></i>
-                                <h4 class="text-secondary"><?php echo $blood_stats['expiring_soon']; ?></h4>
+                                <h4 class="text-secondary"><?php echo $blood_stats['expiring_soon'] ?? 0; ?></h4>
                                 <small class="text-muted">Expiring Soon</small>
                             </div>
                         </div>

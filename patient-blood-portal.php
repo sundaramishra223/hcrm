@@ -112,7 +112,7 @@ $stats = [
     'total_volume_donated' => array_sum(array_column($my_donations, 'volume_collected')),
     'total_blood_received' => count($my_blood_usage),
     'total_volume_received' => array_sum(array_column($my_blood_usage, 'volume_used')),
-    'outstanding_bills' => $db->query("SELECT SUM(total_amount - paid_amount) as total FROM patient_bills WHERE patient_id = ? AND payment_status != 'paid'", [$patient_id])->fetch()['total'] ?? 0,
+            'outstanding_bills' => 0, // Will be calculated after blood bank setup
     'last_donation_date' => !empty($my_donations) ? $my_donations[0]['collection_date'] : null
 ];
 

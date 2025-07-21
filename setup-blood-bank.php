@@ -16,7 +16,7 @@ $success = false;
 if ($_POST && isset($_POST['setup_blood_bank'])) {
     try {
         // Read the SQL file and execute it
-        $sql_file = 'FINAL_ERROR_FREE_DATABASE_UPDATE.sql';
+        $sql_file = 'ULTRA_SAFE_DATABASE_UPDATE.sql';
         
         if (!file_exists($sql_file)) {
             throw new Exception("SQL file not found: $sql_file");
