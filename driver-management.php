@@ -19,7 +19,7 @@ if ($_POST) {
                 // Create user account first
                 $password_hash = password_hash($_POST['password'], PASSWORD_DEFAULT);
                 
-                $user_sql = "INSERT INTO users (username, email, password_hash, role_id, is_active) VALUES (?, ?, ?, 8, 1)";
+                $user_sql = "INSERT INTO users (username, email, password_hash, role_id, is_active) VALUES (?, ?, ?, 12, 1)";
                 $db->query($user_sql, [
                     $_POST['username'],
                     $_POST['email'],
