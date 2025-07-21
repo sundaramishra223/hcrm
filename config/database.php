@@ -16,7 +16,12 @@ class Database {
             $this->connection->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
             $this->connection->setAttribute(PDO::ATTR_DEFAULT_FETCH_MODE, PDO::FETCH_ASSOC);
         } catch(PDOException $e) {
-            die("Database connection failed: " . $e->getMessage());
+            // Show popup instead of dying
+            echo "<script>
+                alert('Database connection failed: " . addslashes($e->getMessage()) . "');
+                window.history.back();
+            </script>";
+            exit;
         }
     }
     
@@ -30,7 +35,12 @@ class Database {
             $stmt->execute($params);
             return $stmt;
         } catch(PDOException $e) {
-            throw new Exception("Query failed: " . $e->getMessage());
+            // Show popup instead of throwing exception
+            echo "<script>
+                alert('Query failed: " . addslashes($e->getMessage()) . "');
+                window.history.back();
+            </script>";
+            exit;
         }
     }
     
