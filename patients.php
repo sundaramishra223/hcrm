@@ -1,6 +1,7 @@
 <?php
 session_start();
 require_once 'config/database.php';
+require_once 'includes/functions.php';
 
 // Check if user is logged in and has permission
 if (!isset($_SESSION['user_id'])) {
@@ -15,41 +16,109 @@ if (!in_array($user_role, ['admin', 'receptionist'])) {
 }
 
 $db = new Database();
-$message = '';
 $search = $_GET['search'] ?? '';
 
 // Handle form submission for new patient
 if ($_POST && isset($_POST['action']) && $_POST['action'] === 'add_patient') {
     try {
-        // Generate patient ID
-        $stmt = $db->query("CALL GetNextPatientId(1, @next_id)");
-        $result = $db->query("SELECT @next_id as patient_id")->fetch();
-        $patient_id = $result['patient_id'];
+        // Validate required fields
+        if (empty($_POST['email']) || empty($_POST['password'])) {
+            showErrorPopup("Email and password are required for patient registration!");
+            exit;
+        }
         
-        // Insert patient
-        $sql = "INSERT INTO patients (hospital_id, patient_id, first_name, middle_name, last_name, phone, emergency_contact, email, address, date_of_birth, gender, blood_group, marital_status, occupation, medical_history, allergies) VALUES (1, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
+        // Validate password strength using JavaScript validation pattern
+        $password = $_POST['password'];
+        if (strlen($password) < 8 || 
+            !preg_match('/[A-Z]/', $password) || 
+            !preg_match('/[a-z]/', $password) || 
+            !preg_match('/[0-9]/', $password) || 
+            !preg_match('/[!@#$%^&*()_+\-=\[\]{};\':"\\|,.<>\/?]/', $password)) {
+            showErrorPopup("Password must be at least 8 characters with uppercase, lowercase, number, and special character!");
+            exit;
+        }
         
-        $db->query($sql, [
+        // Validate password confirmation
+        if ($password !== $_POST['confirm_password']) {
+            showErrorPopup("Password confirmation does not match!");
+            exit;
+        }
+        
+        // Check if email already exists
+        $existing_user = $db->query("SELECT id FROM users WHERE email = ?", [$_POST['email']])->fetch();
+        if ($existing_user) {
+            showErrorPopup("Email already exists! Please use a different email address.");
+            exit;
+        }
+        
+        // Start transaction
+        $db->getConnection()->beginTransaction();
+        
+        // Generate patient ID manually
+        $year = date('Y');
+        $stmt = $db->query("SELECT COUNT(*) as count FROM patients WHERE YEAR(created_at) = ? AND hospital_id = 1", [$year]);
+        $count = $stmt->fetch()['count'] + 1;
+        $patient_id = "P" . $year . str_pad($count, 4, '0', STR_PAD_LEFT);
+        
+        // Get patient role ID
+        $role = $db->query("SELECT id FROM roles WHERE role_name = 'patient'")->fetch();
+        if (!$role) {
+            // Create patient role if it doesn't exist
+            $db->query("INSERT INTO roles (role_name, role_display_name, description) VALUES ('patient', 'Patient', 'Hospital Patient')", []);
+            $role_id = $db->lastInsertId();
+        } else {
+            $role_id = $role['id'];
+        }
+        
+        // Create username from email (part before @)
+        $username = explode('@', $_POST['email'])[0];
+        $counter = 1;
+        $original_username = $username;
+        
+        // Ensure username is unique
+        while ($db->query("SELECT id FROM users WHERE username = ?", [$username])->fetch()) {
+            $username = $original_username . $counter;
+            $counter++;
+        }
+        
+        // Hash password
+        $hashed_password = password_hash($password, PASSWORD_DEFAULT);
+        
+        // Insert into users table first
+        $user_sql = "INSERT INTO users (username, email, password_hash, role_id, is_active, created_at) VALUES (?, ?, ?, ?, 1, NOW())";
+        $db->query($user_sql, [$username, $_POST['email'], $hashed_password, $role_id]);
+        $user_id = $db->lastInsertId();
+        
+        // Insert patient (without password - it's now in users table)
+        $patient_sql = "INSERT INTO patients (user_id, patient_id, first_name, middle_name, last_name, phone, emergency_contact, email, address, date_of_birth, gender, blood_group, marital_status, occupation, medical_history, allergies, hospital_id, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, NOW())";
+        
+        $db->query($patient_sql, [
+            $user_id,
             $patient_id,
             $_POST['first_name'],
-            $_POST['middle_name'],
+            $_POST['middle_name'] ?? '',
             $_POST['last_name'],
             $_POST['phone'],
-            $_POST['emergency_contact'],
+            $_POST['emergency_contact'] ?? '',
             $_POST['email'],
-            $_POST['address'],
-            $_POST['date_of_birth'],
+            $_POST['address'] ?? '',
+            $_POST['date_of_birth'] ?? null,
             $_POST['gender'],
-            $_POST['blood_group'],
-            $_POST['marital_status'],
-            $_POST['occupation'],
-            $_POST['medical_history'],
-            $_POST['allergies']
+            $_POST['blood_group'] ?? '',
+            $_POST['marital_status'] ?? '',
+            $_POST['occupation'] ?? '',
+            $_POST['medical_history'] ?? '',
+            $_POST['allergies'] ?? ''
         ]);
         
-        $message = "Patient added successfully! ID: " . $patient_id;
+        // Commit transaction
+        $db->getConnection()->commit();
+        
+        showSuccessPopup("Patient registered successfully!\nPatient ID: $patient_id\nEmail: {$_POST['email']}\nThey can now login with their email and password.", "patients.php");
     } catch (Exception $e) {
-        $message = "Error: " . $e->getMessage();
+        // Rollback transaction on error
+        $db->getConnection()->rollBack();
+        showErrorPopup("Error adding patient: " . $e->getMessage());
     }
 }
 
@@ -57,7 +126,7 @@ if ($_POST && isset($_POST['action']) && $_POST['action'] === 'add_patient') {
 $sql = "SELECT p.*, 
         TIMESTAMPDIFF(YEAR, p.date_of_birth, CURDATE()) as age,
         (SELECT COUNT(*) FROM appointments WHERE patient_id = p.id) as appointment_count
-        FROM patients p 
+        FROM patients p
         WHERE p.hospital_id = 1";
 
 if ($search) {
@@ -341,11 +410,7 @@ if ($search) {
             </div>
         </div>
         
-        <?php if ($message): ?>
-            <div class="alert <?php echo strpos($message, 'Error') === 0 ? 'alert-danger' : 'alert-success'; ?>">
-                <?php echo htmlspecialchars($message); ?>
-            </div>
-        <?php endif; ?>
+
         
         <div class="search-section">
             <form method="GET" class="search-form">
@@ -445,8 +510,9 @@ if ($search) {
                     </div>
                     
                     <div class="form-group">
-                        <label for="email">Email Address</label>
-                        <input type="email" id="email" name="email">
+                        <label for="email">Email Address *</label>
+                        <input type="email" id="email" name="email" required placeholder="This will be their login email">
+                        <small style="color: #666; font-size: 12px;">Patient will use this email to login to the system</small>
                     </div>
                     
                     <div class="form-group">
@@ -512,6 +578,18 @@ if ($search) {
                         <textarea id="allergies" name="allergies" placeholder="Drug allergies, food allergies, environmental allergies..."></textarea>
                     </div>
                     
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label for="password">Password *</label>
+                            <input type="password" id="password" name="password" required minlength="8" placeholder="Min 8 chars: A-Z, a-z, 0-9, special">
+                            <small style="color: #666; font-size: 12px;">Must include: uppercase, lowercase, number, and special character</small>
+                        </div>
+                        <div class="form-group">
+                            <label for="confirm_password">Confirm Password *</label>
+                            <input type="password" id="confirm_password" name="confirm_password" required minlength="8" placeholder="Confirm your password">
+                        </div>
+                    </div>
+                    
                     <div style="text-align: right; margin-top: 20px;">
                         <button type="button" onclick="closeModal()" class="btn btn-secondary">Cancel</button>
                         <button type="submit" class="btn btn-primary">Add Patient</button>
@@ -537,6 +615,65 @@ if ($search) {
                 closeModal();
             }
         }
+        
+        // Password validation
+        // Enhanced form validation with strong password requirements
+        document.querySelector('form').addEventListener('submit', function(e) {
+            const email = document.getElementById('email').value;
+            const password = document.getElementById('password').value;
+            const confirmPassword = document.getElementById('confirm_password').value;
+            
+            // Email validation
+            if (!email || !email.includes('@')) {
+                e.preventDefault();
+                alert('❌ Please enter a valid email address!');
+                return false;
+            }
+            
+            // Password strength validation
+            if (password.length < 8) {
+                e.preventDefault();
+                alert('❌ Password must be at least 8 characters long!');
+                return false;
+            }
+            
+            if (!/[A-Z]/.test(password)) {
+                e.preventDefault();
+                alert('❌ Password must contain at least one uppercase letter!');
+                return false;
+            }
+            
+            if (!/[a-z]/.test(password)) {
+                e.preventDefault();
+                alert('❌ Password must contain at least one lowercase letter!');
+                return false;
+            }
+            
+            if (!/[0-9]/.test(password)) {
+                e.preventDefault();
+                alert('❌ Password must contain at least one number!');
+                return false;
+            }
+            
+            if (!/[!@#$%^&*()_+\-=\[\]{};':"\\|,.<>\/?]/.test(password)) {
+                e.preventDefault();
+                alert('❌ Password must contain at least one special character!');
+                return false;
+            }
+            
+            // Password confirmation
+            if (password !== confirmPassword) {
+                e.preventDefault();
+                alert('❌ Passwords do not match! Please try again.');
+                return false;
+            }
+            
+            // All validations passed
+            return true;
+        });
     </script>
+    
+    <!-- Include Password Validation Script -->
+    <script src="includes/password-validation.js"></script>
 </body>
 </html>

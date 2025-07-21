@@ -19,18 +19,16 @@ $selected_patient_id = $_GET['patient_id'] ?? '';
 // Handle form submission
 if ($_POST && isset($_POST['action']) && $_POST['action'] === 'book_appointment') {
     try {
-        // Check for appointment conflicts
-        $conflict_check = $db->query(
-            "CALL CheckAppointmentConflict(?, ?, ?, ?, @conflict_count)",
+        // Check for appointment conflicts with simple query
+        $conflict_result = $db->query(
+            "SELECT COUNT(*) as conflict_count FROM appointments 
+             WHERE doctor_id = ? AND appointment_date = ? AND appointment_time = ? AND status != 'cancelled'",
             [
                 $_POST['doctor_id'],
                 $_POST['appointment_date'],
-                $_POST['appointment_time'],
-                $_POST['duration'] ?? 30
+                $_POST['appointment_time']
             ]
-        );
-        
-        $conflict_result = $db->query("SELECT @conflict_count as conflict_count")->fetch();
+        )->fetch();
         
         if ($conflict_result['conflict_count'] > 0) {
             $error = "Doctor is not available at the selected time. Please choose a different time slot.";
@@ -38,30 +36,29 @@ if ($_POST && isset($_POST['action']) && $_POST['action'] === 'book_appointment'
             // Generate appointment number
             $appointment_number = 'APT' . date('Ymd') . sprintf('%04d', rand(1000, 9999));
             
-            // Insert appointment
-            $sql = "INSERT INTO appointments (hospital_id, patient_id, doctor_id, appointment_number, appointment_date, appointment_time, duration_minutes, type, chief_complaint, notes, consultation_fee, created_by) VALUES (1, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
-            
-            // Get doctor's consultation fee
-            $doctor_fee = $db->query("SELECT consultation_fee FROM doctors WHERE id = ?", [$_POST['doctor_id']])->fetch()['consultation_fee'];
+            // Insert appointment with exact table columns
+            $sql = "INSERT INTO appointments (hospital_id, patient_id, doctor_id, appointment_date, appointment_time, appointment_type, status, reason, notes, created_by) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
             
             $db->query($sql, [
+                1, // hospital_id
                 $_POST['patient_id'],
                 $_POST['doctor_id'],
-                $appointment_number,
                 $_POST['appointment_date'],
                 $_POST['appointment_time'],
-                $_POST['duration'] ?? 30,
-                $_POST['appointment_type'],
-                $_POST['chief_complaint'],
-                $_POST['notes'],
-                $doctor_fee,
+                $_POST['appointment_type'] ?? 'consultation',
+                'scheduled', // default status
+                $_POST['chief_complaint'] ?? 'General consultation',
+                $_POST['notes'] ?? 'Appointment booked online',
                 $_SESSION['user_id']
             ]);
             
-            $message = "Appointment booked successfully! Appointment Number: " . $appointment_number;
+            $message = "✅ Appointment booked successfully for " . $_POST['appointment_date'] . " at " . $_POST['appointment_time'] . "!";
         }
     } catch (Exception $e) {
         $error = "Error booking appointment: " . $e->getMessage();
+        // Debug info
+        error_log("Appointment booking error: " . $e->getMessage());
+        error_log("POST data: " . print_r($_POST, true));
     }
 }
 
@@ -70,7 +67,7 @@ $doctors = $db->query("
     SELECT d.*, CONCAT(d.first_name, ' ', d.last_name) as full_name, dept.name as department_name 
     FROM doctors d 
     LEFT JOIN departments dept ON d.department_id = dept.id
-    WHERE d.hospital_id = 1 AND d.is_available = 1
+    WHERE d.is_available = 1
     ORDER BY d.first_name, d.last_name
 ")->fetchAll();
 
@@ -80,7 +77,6 @@ if (in_array($user_role, ['admin', 'receptionist'])) {
     $patients = $db->query("
         SELECT id, patient_id, CONCAT(first_name, ' ', last_name) as full_name, phone 
         FROM patients 
-        WHERE hospital_id = 1 
         ORDER BY first_name, last_name
     ")->fetchAll();
 } else if ($user_role === 'patient') {
@@ -88,7 +84,7 @@ if (in_array($user_role, ['admin', 'receptionist'])) {
     $patients = $db->query("
         SELECT id, patient_id, CONCAT(first_name, ' ', last_name) as full_name, phone 
         FROM patients 
-        WHERE user_id = ? AND hospital_id = 1
+        WHERE user_id = ?
     ", [$_SESSION['user_id']])->fetchAll();
     
     if (!empty($patients)) {

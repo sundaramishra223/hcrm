@@ -55,8 +55,12 @@ if ($_POST) {
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Hospital CRM - Login</title>
+    <?php 
+    include_once 'includes/site-config.php';
+    renderSiteHead('Login');
+    ?>
     <link rel="stylesheet" href="style.css">
+    <?php renderDynamicStyles(); ?>
     <style>
         .login-container {
             min-height: 100vh;
@@ -166,7 +170,7 @@ if ($_POST) {
     <div class="login-container">
         <div class="login-card">
             <div class="login-header">
-                <h1>Hospital CRM</h1>
+                <h1><?php echo htmlspecialchars($site_config['site_name']); ?></h1>
                 <p>Please sign in to your account</p>
             </div>
             
@@ -190,14 +194,52 @@ if ($_POST) {
             </form>
             
             <div class="demo-users">
-                <h4>Demo Login Credentials:</h4>
-                <p><strong>Admin:</strong> admin@hospital.com / password</p>
-                <p><strong>Doctor:</strong> dr.sharma@hospital.com / password</p>
-                <p><strong>Patient:</strong> john.doe@email.com / password</p>
-                <p><strong>Nurse:</strong> priya.nurse@hospital.com / password</p>
-                <p><strong>Reception:</strong> reception@hospital.com / password</p>
+                <h4>🎮 Demo Login Credentials (Password: <strong>5und@r@M</strong>):</h4>
+                <p><strong>👨‍💼 Admin:</strong> admin@hospital.com / 5und@r@M</p>
+                <p><strong>👩‍⚕️ Doctor:</strong> dr.sharma@hospital.com / 5und@r@M</p>
+                <p><strong>🧑‍⚕️ Patient:</strong> demo@patient.com / 5und@r@M</p>
+                <p><strong>💊 Pharmacy:</strong> pharmacy@demo.com / 5und@r@M</p>
+                <p><strong>🔬 Lab Tech:</strong> lab@demo.com / 5und@r@M</p>
+                <p><strong>👩‍💼 Receptionist:</strong> reception@hospital.com / 5und@r@M</p>
+                <p><strong>👩‍⚕️ Nurse:</strong> priya.nurse@hospital.com / 5und@r@M</p>
+                <p><strong>🚗 Driver:</strong> driver@demo.com / 5und@r@M</p>
+                <small style="color: #666; margin-top: 10px; display: block;">
+                    💡 Click any credential above to auto-fill | All passwords: <strong style="color: #d63384;">5und@r@M</strong>
+                </small>
             </div>
         </div>
     </div>
+
+    <!-- No password validation on login page -->
+    <script>
+        // Theme support for login page
+        const savedTheme = localStorage.getItem('theme') || 'light';
+        document.documentElement.setAttribute('data-theme', savedTheme);
+        
+        // Demo credential fill
+        document.addEventListener('DOMContentLoaded', () => {
+            const demoUsers = document.querySelectorAll('.demo-users p');
+            demoUsers.forEach(user => {
+                user.addEventListener('click', () => {
+                    const text = user.textContent;
+                    const emailMatch = text.match(/(\S+@\S+\.\S+)/);
+                    
+                    if (emailMatch) {
+                        const email = emailMatch[1];
+                        document.getElementById('email').value = email;
+                        
+                        // All users have same password
+                        document.getElementById('password').value = '5und@r@M';
+                        
+                        // Add visual feedback
+                        user.style.background = '#d4edda';
+                        setTimeout(() => {
+                            user.style.background = '';
+                        }, 1000);
+                    }
+                });
+            });
+        });
+    </script>
 </body>
 </html>
