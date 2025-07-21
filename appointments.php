@@ -42,12 +42,14 @@ $filter_date = $_GET['date'] ?? date('Y-m-d');
 $filter_status = $_GET['status'] ?? '';
 $filter_doctor = $_GET['doctor'] ?? '';
 
-// Build query based on user role
+// Build query based on user role (using simple columns to avoid MariaDB CONCAT error)
 $sql = "SELECT a.*, 
-        CONCAT(p.first_name, ' ', p.last_name) as patient_name,
+        p.first_name as patient_first_name,
+        p.last_name as patient_last_name,
         p.phone as patient_phone,
         p.patient_id,
-        CONCAT(d.first_name, ' ', d.last_name) as doctor_name,
+        d.first_name as doctor_first_name,
+        d.last_name as doctor_last_name,
         d.specialization,
         dept.name as department_name
         FROM appointments a
@@ -532,7 +534,7 @@ try {
                                     </small>
                                 </td>
                                 <td class="patient-info">
-                                    <div class="name"><?php echo htmlspecialchars($appointment['patient_name']); ?></div>
+                                    <div class="name"><?php echo htmlspecialchars($appointment['patient_first_name'] . ' ' . $appointment['patient_last_name']); ?></div>
                                     <div class="details">
                                         ID: <?php echo htmlspecialchars($appointment['patient_id']); ?><br>
                                         <?php echo htmlspecialchars($appointment['patient_phone']); ?>
@@ -540,7 +542,7 @@ try {
                                 </td>
                                 <?php if ($user_role !== 'doctor'): ?>
                                 <td class="doctor-info">
-                                    <div class="name">Dr. <?php echo htmlspecialchars($appointment['doctor_name']); ?></div>
+                                    <div class="name">Dr. <?php echo htmlspecialchars($appointment['doctor_first_name'] . ' ' . $appointment['doctor_last_name']); ?></div>
                                     <div class="specialization"><?php echo htmlspecialchars($appointment['specialization'] ?? 'General'); ?></div>
                                 </td>
                                 <?php endif; ?>

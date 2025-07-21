@@ -1,0 +1,14 @@
+# Ignore common files but not our updates
+*.log
+*.tmp
+.env
+node_modules/
+vendor/
+.DS_Store
+Thumbs.db
+
+# But include our new files
+!admin-dashboard.php
+!cleanup-logs.php
+!includes/log-cleanup-helper.php
+!sql/security_logs_setup.sql

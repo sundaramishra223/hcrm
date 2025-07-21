@@ -169,7 +169,7 @@ $sql = "SELECT lo.*,
         FROM lab_orders lo
         JOIN patients p ON lo.patient_id = p.id
         JOIN doctors d ON lo.doctor_id = d.id
-        WHERE p.hospital_id = 1";
+        ";
 
 $params = [];
 
@@ -232,7 +232,6 @@ if ($user_role === 'lab_technician') {
 $patients = $db->query("
     SELECT id, patient_id, CONCAT(first_name, ' ', last_name) as full_name, phone 
     FROM patients 
-    WHERE hospital_id = 1 
     ORDER BY first_name, last_name
 ")->fetchAll();
 
@@ -240,14 +239,14 @@ $patients = $db->query("
 $doctors = $db->query("
     SELECT id, CONCAT(first_name, ' ', last_name) as full_name, specialization
     FROM doctors 
-    WHERE hospital_id = 1 AND is_available = 1
+    WHERE is_available = 1
     ORDER BY first_name, last_name
 ")->fetchAll();
 
 // Get available lab tests
 $lab_tests = $db->query("
     SELECT * FROM lab_tests 
-    WHERE hospital_id = 1 AND is_active = 1 
+    WHERE is_active = 1 
     ORDER BY category, name
 ")->fetchAll();
 
