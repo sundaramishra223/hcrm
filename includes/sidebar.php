@@ -71,7 +71,8 @@ function isActive($page_names) {
             <li><a href="shift-management.php" class="<?php echo isActive('shift-management.php'); ?>"><i class="fas fa-clock"></i> Shift Management</a></li>
             <li><a href="blood-bank-management.php" class="<?php echo isActive('blood-bank-management.php'); ?>"><i class="fas fa-tint"></i> Blood Bank</a></li>
             <li><a href="organ-donation-management.php" class="<?php echo isActive('organ-donation-management.php'); ?>"><i class="fas fa-heart"></i> Organ Donation</a></li>
-            <li><a href="organ-transplant-tracking.php" class="<?php echo isActive('organ-transplant-tracking.php'); ?>"><i class="fas fa-procedures"></i> Organ Transplant</a></li>
+                            <li><a href="organ-transplant-tracking.php" class="<?php echo isActive('organ-transplant-tracking.php'); ?>"><i class="fas fa-procedures"></i> Organ Transplant</a></li>
+                <li><a href="organ-monitoring.php" class="<?php echo isActive('organ-monitoring.php'); ?>"><i class="fas fa-heartbeat"></i> Organ Monitoring</a></li>
             <li><a href="insurance-management.php" class="<?php echo isActive('insurance-management.php'); ?>"><i class="fas fa-shield-alt"></i> Insurance Management</a></li>
             <li><a href="driver-management.php" class="<?php echo isActive('driver-management.php'); ?>"><i class="fas fa-users-cog"></i> Driver Management</a></li>
             <li><a href="equipment.php" class="<?php echo isActive('equipment.php'); ?>"><i class="fas fa-tools"></i> Equipment</a></li>

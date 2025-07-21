@@ -1411,9 +1411,150 @@ CREATE INDEX IF NOT EXISTS `idx_patient_status_logs_cleanup` ON `patient_status_
 INSERT IGNORE INTO `hospitals` (`id`, `name`, `address`, `city`, `state`, `phone`, `email`, `license_number`) 
 VALUES (1, 'Default Hospital', '123 Hospital Street', 'Hospital City', 'Hospital State', '+1234567890', 'admin@hospital.com', 'LIC001');
 
+-- Create ROLES table (MISSING TABLE FIX)
+CREATE TABLE IF NOT EXISTS `roles` (
+  `id` int(11) NOT NULL AUTO_INCREMENT,
+  `role_name` varchar(50) NOT NULL,
+  `role_display_name` varchar(100) NOT NULL,
+  `description` text DEFAULT NULL,
+  `permissions` json DEFAULT NULL,
+  `is_active` tinyint(1) DEFAULT 1,
+  `created_at` timestamp NOT NULL DEFAULT current_timestamp(),
+  `updated_at` timestamp NOT NULL DEFAULT current_timestamp() ON UPDATE current_timestamp(),
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `role_name` (`role_name`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+
+-- Insert default roles
+INSERT IGNORE INTO `roles` (`id`, `role_name`, `role_display_name`, `description`) VALUES
+(1, 'admin', 'Administrator', 'Full system access'),
+(2, 'doctor', 'Doctor', 'Medical practitioner'),
+(3, 'nurse', 'Nurse', 'Nursing staff'),
+(4, 'patient', 'Patient', 'Hospital patient'),
+(5, 'receptionist', 'Receptionist', 'Front desk staff'),
+(6, 'pharmacy_staff', 'Pharmacy Staff', 'Pharmacy personnel'),
+(7, 'lab_technician', 'Lab Technician', 'Laboratory personnel'),
+(8, 'staff', 'General Staff', 'General hospital staff'),
+(9, 'intern_doctor', 'Intern Doctor', 'Medical intern'),
+(10, 'intern_nurse', 'Intern Nurse', 'Nursing intern'),
+(11, 'intern_lab', 'Lab Intern', 'Laboratory intern'),
+(12, 'intern_pharmacy', 'Pharmacy Intern', 'Pharmacy intern'),
+(13, 'driver', 'Driver', 'Ambulance driver'),
+(14, 'transplant_coordinator', 'Transplant Coordinator', 'Organ transplant coordinator'),
+(15, 'surgeon', 'Surgeon', 'Surgical specialist');
+
+-- Create BLOOD_GROUPS table (MISSING TABLE FIX)
+CREATE TABLE IF NOT EXISTS `blood_groups` (
+  `id` int(11) NOT NULL AUTO_INCREMENT,
+  `blood_group` varchar(10) NOT NULL,
+  `description` varchar(100) DEFAULT NULL,
+  `compatibility` json DEFAULT NULL,
+  `is_active` tinyint(1) DEFAULT 1,
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `blood_group` (`blood_group`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+
+-- Insert blood groups
+INSERT IGNORE INTO `blood_groups` (`blood_group`, `description`) VALUES
+('A+', 'A Positive'),
+('A-', 'A Negative'),
+('B+', 'B Positive'),
+('B-', 'B Negative'),
+('AB+', 'AB Positive'),
+('AB-', 'AB Negative'),
+('O+', 'O Positive'),
+('O-', 'O Negative');
+
+-- Create ORGAN_TYPES table (MISSING TABLE FIX)
+CREATE TABLE IF NOT EXISTS `organ_types` (
+  `id` int(11) NOT NULL AUTO_INCREMENT,
+  `organ_name` varchar(100) NOT NULL,
+  `description` text DEFAULT NULL,
+  `preservation_time_hours` int(11) DEFAULT NULL,
+  `compatibility_criteria` json DEFAULT NULL,
+  `is_active` tinyint(1) DEFAULT 1,
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `organ_name` (`organ_name`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+
+-- Insert organ types
+INSERT IGNORE INTO `organ_types` (`organ_name`, `description`, `preservation_time_hours`) VALUES
+('kidney', 'Kidney', 24),
+('liver', 'Liver', 12),
+('heart', 'Heart', 6),
+('lung', 'Lung', 8),
+('pancreas', 'Pancreas', 12),
+('intestine', 'Small Intestine', 10),
+('cornea', 'Cornea', 168),
+('skin', 'Skin Tissue', 336),
+('bone', 'Bone Tissue', 8760),
+('tissue', 'General Tissue', 24);
+
+-- Add missing organ tables
+CREATE TABLE IF NOT EXISTS `organ_donors` (
+  `id` int(11) NOT NULL AUTO_INCREMENT,
+  `hospital_id` int(11) NOT NULL DEFAULT 1,
+  `patient_id` int(11) NOT NULL,
+  `donor_id` varchar(50) NOT NULL,
+  `blood_group` enum('A+','A-','B+','B-','AB+','AB-','O+','O-') NOT NULL,
+  `organ_types_consented` json DEFAULT NULL,
+  `medical_history` text DEFAULT NULL,
+  `is_eligible` tinyint(1) DEFAULT 1,
+  `is_active` tinyint(1) DEFAULT 1,
+  `registered_date` date DEFAULT NULL,
+  `created_by` int(11) NOT NULL,
+  `created_at` timestamp NOT NULL DEFAULT current_timestamp(),
+  `updated_at` timestamp NOT NULL DEFAULT current_timestamp() ON UPDATE current_timestamp(),
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `donor_id` (`donor_id`),
+  KEY `hospital_id` (`hospital_id`),
+  KEY `patient_id` (`patient_id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+
+CREATE TABLE IF NOT EXISTS `organ_matches` (
+  `id` int(11) NOT NULL AUTO_INCREMENT,
+  `hospital_id` int(11) NOT NULL DEFAULT 1,
+  `donor_id` int(11) NOT NULL,
+  `recipient_id` int(11) NOT NULL,
+  `organ_type` varchar(100) NOT NULL,
+  `compatibility_score` decimal(5,2) DEFAULT NULL,
+  `status` enum('potential','confirmed','rejected','completed') DEFAULT 'potential',
+  `match_date` timestamp NOT NULL DEFAULT current_timestamp(),
+  `notes` text DEFAULT NULL,
+  PRIMARY KEY (`id`),
+  KEY `hospital_id` (`hospital_id`),
+  KEY `donor_id` (`donor_id`),
+  KEY `recipient_id` (`recipient_id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+
+CREATE TABLE IF NOT EXISTS `organ_audit_trail` (
+  `id` int(11) NOT NULL AUTO_INCREMENT,
+  `hospital_id` int(11) NOT NULL DEFAULT 1,
+  `related_table` varchar(100) NOT NULL,
+  `related_id` int(11) NOT NULL,
+  `action` varchar(100) NOT NULL,
+  `legal_significance` enum('normal','important','violation','critical') DEFAULT 'normal',
+  `details` json DEFAULT NULL,
+  `performed_by` int(11) NOT NULL,
+  `timestamp` timestamp NOT NULL DEFAULT current_timestamp(),
+  PRIMARY KEY (`id`),
+  KEY `hospital_id` (`hospital_id`),
+  KEY `related_table` (`related_table`),
+  KEY `legal_significance` (`legal_significance`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+
+-- Update users table to add role_id column
+ALTER TABLE `users` ADD COLUMN `role_id` int(11) DEFAULT NULL AFTER `role`;
+ALTER TABLE `users` ADD KEY `role_id` (`role_id`);
+
+-- Update medicines table structure to match PHP code usage
+ALTER TABLE `medicines` 
+ADD COLUMN `min_stock_level` int(11) DEFAULT 10 AFTER `reorder_level`,
+ADD COLUMN `category` varchar(100) DEFAULT NULL AFTER `category_id`;
+
 -- Insert default admin user (password: 'password')
-INSERT IGNORE INTO `users` (`id`, `hospital_id`, `username`, `email`, `password`, `role`, `first_name`, `last_name`, `is_active`) 
-VALUES (1, 1, 'admin', 'admin@hospital.com', '$2y$10$92IXUNpkjO0rOQ5byMi.Ye4oKoEa3Ro9llC/.og/at2.uheWG/igi', 'admin', 'System', 'Administrator', 1);
+INSERT IGNORE INTO `users` (`id`, `hospital_id`, `username`, `email`, `password`, `role`, `role_id`, `first_name`, `last_name`, `is_active`) 
+VALUES (1, 1, 'admin', 'admin@hospital.com', '$2y$10$92IXUNpkjO0rOQ5byMi.Ye4oKoEa3Ro9llC/.og/at2.uheWG/igi', 'admin', 1, 'System', 'Administrator', 1);
 
 -- Insert default departments
 INSERT IGNORE INTO `departments` (`id`, `hospital_id`, `name`, `description`) VALUES
