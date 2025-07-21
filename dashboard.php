@@ -172,6 +172,12 @@ try {
                     <li><a href="staff.php"><i class="fas fa-user-nurse"></i> Staff</a></li>
                     <li><a href="attendance.php"><i class="fas fa-clock"></i> Attendance</a></li>
                     <li><a href="intern-management.php"><i class="fas fa-graduation-cap"></i> Intern Management</a></li>
+                    <li><a href="blood-bank-management.php"><i class="fas fa-tint"></i> Blood Bank</a></li>
+                    <li><a href="organ-donation-management.php"><i class="fas fa-heart"></i> Organ Donation</a></li>
+                    <li><a href="organ-transplant-tracking.php"><i class="fas fa-procedures"></i> Organ Transplant</a></li>
+                    <li><a href="insurance-management.php"><i class="fas fa-shield-alt"></i> Insurance Management</a></li>
+                    <li><a href="shift-management.php"><i class="fas fa-clock"></i> Shift Management</a></li>
+                    <li><a href="driver-management.php"><i class="fas fa-users-cog"></i> Driver Management</a></li>
                 <?php endif; ?>
                 
                 <?php if (in_array($user_role, ['admin', 'nurse', 'receptionist', 'doctor', 'intern_doctor', 'intern_nurse'])): ?>
@@ -199,6 +205,7 @@ try {
                 <li><a href="profile.php"><i class="fas fa-user"></i> My Profile</a></li>
                 
                 <?php if (in_array($user_role, ['admin'])): ?>
+                    <li><a href="admin-dashboard.php"><i class="fas fa-crown"></i> Admin Control Panel</a></li>
                     <li><a href="settings.php"><i class="fas fa-cog"></i> Settings</a></li>
                 <?php endif; ?>
                 
@@ -215,6 +222,7 @@ try {
                     <li><a href="my-prescriptions.php"><i class="fas fa-prescription"></i> My Prescriptions</a></li>
                     <li><a href="my-bills.php"><i class="fas fa-money-bill-wave"></i> My Bills</a></li>
                     <li><a href="my-medical-history.php"><i class="fas fa-file-medical"></i> Medical History</a></li>
+                    <li><a href="patient-blood-portal.php"><i class="fas fa-tint"></i> Blood Portal</a></li>
                 <?php endif; ?>
             </ul>
         </aside>

@@ -54,6 +54,10 @@ function isActive($page_names) {
             <li><a href="patient-vitals.php" class="<?php echo isActive('patient-vitals.php'); ?>"><i class="fas fa-heartbeat"></i> Patient Vitals</a></li>
         <?php endif; ?>
         
+        <?php if (in_array($user_role, ['admin', 'doctor', 'nurse'])): ?>
+            <li><a href="blood-donation-tracking.php" class="<?php echo isActive('blood-donation-tracking.php'); ?>"><i class="fas fa-hand-holding-heart"></i> Blood Donation</a></li>
+        <?php endif; ?>
+        
         <?php if (in_array($user_role, ['admin', 'doctor', 'nurse', 'receptionist', 'intern_doctor', 'intern_nurse'])): ?>
             <li><a href="patient-monitoring.php" class="<?php echo isActive('patient-monitoring.php'); ?>"><i class="fas fa-user-injured"></i> Patient Monitoring</a></li>
         <?php endif; ?>
@@ -67,6 +71,8 @@ function isActive($page_names) {
             <li><a href="shift-management.php" class="<?php echo isActive('shift-management.php'); ?>"><i class="fas fa-clock"></i> Shift Management</a></li>
             <li><a href="blood-bank-management.php" class="<?php echo isActive('blood-bank-management.php'); ?>"><i class="fas fa-tint"></i> Blood Bank</a></li>
             <li><a href="organ-donation-management.php" class="<?php echo isActive('organ-donation-management.php'); ?>"><i class="fas fa-heart"></i> Organ Donation</a></li>
+            <li><a href="organ-transplant-tracking.php" class="<?php echo isActive('organ-transplant-tracking.php'); ?>"><i class="fas fa-procedures"></i> Organ Transplant</a></li>
+            <li><a href="insurance-management.php" class="<?php echo isActive('insurance-management.php'); ?>"><i class="fas fa-shield-alt"></i> Insurance Management</a></li>
             <li><a href="driver-management.php" class="<?php echo isActive('driver-management.php'); ?>"><i class="fas fa-users-cog"></i> Driver Management</a></li>
             <li><a href="equipment.php" class="<?php echo isActive('equipment.php'); ?>"><i class="fas fa-tools"></i> Equipment</a></li>
             <li><a href="beds.php" class="<?php echo isActive('beds.php'); ?>"><i class="fas fa-bed"></i> Bed Management</a></li>
@@ -83,6 +89,7 @@ function isActive($page_names) {
         <li><a href="profile.php" class="<?php echo isActive('profile.php'); ?>"><i class="fas fa-user"></i> My Profile</a></li>
         
         <?php if (in_array($user_role, ['admin'])): ?>
+            <li><a href="admin-dashboard.php" class="<?php echo isActive('admin-dashboard.php'); ?>"><i class="fas fa-crown"></i> Admin Control Panel</a></li>
             <li><a href="settings.php" class="<?php echo isActive('settings.php'); ?>"><i class="fas fa-cog"></i> Settings</a></li>
         <?php endif; ?>
         
