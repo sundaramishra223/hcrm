@@ -64,6 +64,7 @@ function isActive($page_names) {
         
         <?php if (in_array($user_role, ['admin'])): ?>
             <li><a href="site-settings.php" class="<?php echo isActive('site-settings.php'); ?>"><i class="fas fa-cogs"></i> Site Settings</a></li>
+            <li><a href="shift-management.php" class="<?php echo isActive('shift-management.php'); ?>"><i class="fas fa-clock"></i> Shift Management</a></li>
             <li><a href="driver-management.php" class="<?php echo isActive('driver-management.php'); ?>"><i class="fas fa-users-cog"></i> Driver Management</a></li>
             <li><a href="equipment.php" class="<?php echo isActive('equipment.php'); ?>"><i class="fas fa-tools"></i> Equipment</a></li>
             <li><a href="beds.php" class="<?php echo isActive('beds.php'); ?>"><i class="fas fa-bed"></i> Bed Management</a></li>
