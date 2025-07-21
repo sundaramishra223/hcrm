@@ -1,6 +1,14 @@
     <!-- Global Theme System CSS -->
     <link rel="stylesheet" href="assets/css/style.css">
     
+    <!-- Site Configuration -->
+    <?php 
+    if (!isset($site_config)) {
+        include_once __DIR__ . '/site-config.php'; 
+    }
+    renderDynamicStyles();
+    ?>
+    
     <!-- Theme Toggle UI -->
     <div class="theme-toggle" id="themeToggle">
         <div class="theme-option" data-theme="light" onclick="setTheme('light')" title="Light Theme">☀️</div>
@@ -9,17 +17,29 @@
     </div>
     
     <script>
-        // Universal Theme Management System
+        // Universal Theme Management System - Instant switching
+        const savedTheme = localStorage.getItem('theme') || 'light';
+        
+        // Apply theme immediately (before DOM loads)
+        document.documentElement.setAttribute('data-theme', savedTheme);
+        document.documentElement.style.setProperty('--transition-duration', '0s');
+        
         function setTheme(theme) {
+            // Temporarily disable transitions for instant change
+            document.documentElement.style.setProperty('--transition-duration', '0s');
+            
+            // Apply theme
             document.documentElement.setAttribute('data-theme', theme);
             localStorage.setItem('theme', theme);
             updateThemeToggle(theme);
             
-            // Add smooth transition
-            document.body.style.transition = 'all 0.3s ease';
+            // Force style recalculation
+            document.body.offsetHeight;
+            
+            // Re-enable transitions after a short delay
             setTimeout(() => {
-                document.body.style.transition = '';
-            }, 300);
+                document.documentElement.style.removeProperty('--transition-duration');
+            }, 50);
         }
         
         function updateThemeToggle(activeTheme) {
@@ -33,8 +53,11 @@
         
         // Initialize theme on page load
         document.addEventListener('DOMContentLoaded', function() {
-            const savedTheme = localStorage.getItem('theme') || 'light';
             setTheme(savedTheme);
+            // Re-enable transitions
+            setTimeout(() => {
+                document.documentElement.style.removeProperty('--transition-duration');
+            }, 100);
         });
         
         // Sidebar Functions (if sidebar exists)
@@ -158,8 +181,17 @@
             }
         }
         
-        /* Animation for theme changes */
+        /* Animation for theme changes - respects --transition-duration */
         * {
-            transition: background-color 0.3s ease, color 0.3s ease, border-color 0.3s ease;
+            transition: 
+                background-color var(--transition-duration, 0.3s) ease, 
+                color var(--transition-duration, 0.3s) ease, 
+                border-color var(--transition-duration, 0.3s) ease,
+                box-shadow var(--transition-duration, 0.3s) ease;
+        }
+        
+        /* Instant theme switching support */
+        html[style*="--transition-duration: 0s"] * {
+            transition: none !important;
         }
     </style>
