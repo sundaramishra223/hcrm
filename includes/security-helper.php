@@ -509,5 +509,28 @@ class SecurityHelper {
             error_log("Clean security logs error: " . $e->getMessage());
         }
     }
+    
+    /**
+     * Get comprehensive log cleanup helper
+     * Returns instance of LogCleanupHelper for advanced cleanup operations
+     */
+    public function getLogCleanupHelper() {
+        require_once __DIR__ . '/log-cleanup-helper.php';
+        return new LogCleanupHelper($this->db);
+    }
+    
+    /**
+     * Perform comprehensive log cleanup
+     * Uses the new LogCleanupHelper for complete cleanup operations
+     */
+    public function performComprehensiveCleanup($custom_retention = []) {
+        try {
+            $cleanup_helper = $this->getLogCleanupHelper();
+            return $cleanup_helper->cleanAllLogs($custom_retention);
+        } catch (Exception $e) {
+            error_log("Comprehensive log cleanup error: " . $e->getMessage());
+            return ['success' => false, 'error' => $e->getMessage()];
+        }
+    }
 }
 ?>
