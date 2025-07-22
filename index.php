@@ -55,7 +55,7 @@ if ($_POST) {
                     error_log("Failed to update last login: " . $e->getMessage());
                 }
                 
-                // Redirect with success
+                // Redirect with success (no delay)
                 header('Location: dashboard.php');
                 exit;
             } else {
@@ -188,6 +188,25 @@ if ($_POST) {
             margin: 5px 0;
             color: #666;
         }
+        
+        .demo-user {
+            cursor: pointer;
+            padding: 8px;
+            border-radius: 5px;
+            transition: all 0.3s ease;
+            border: 1px solid transparent;
+        }
+        
+        .demo-user:hover {
+            background: #e3f2fd;
+            border-color: #2196f3;
+            transform: translateX(5px);
+        }
+        
+        .demo-user:active {
+            background: #bbdefb;
+            transform: scale(0.98);
+        }
     </style>
 </head>
 <body>
@@ -235,17 +254,28 @@ if ($_POST) {
                     >
                 </div>
                 
-                <button type="submit" class="btn">
+                <button type="submit" class="btn" id="loginBtn">
                     <i class="fas fa-sign-in-alt"></i> Sign In
                 </button>
             </form>
             
             <div class="demo-credentials">
-                <h4><i class="fas fa-info-circle"></i> Demo Credentials</h4>
-                <p><strong>Admin:</strong> admin@hospital.com / admin</p>
-                <p><strong>Doctor:</strong> doctor1@hospital.com / admin</p>
-                <p><strong>Nurse:</strong> nurse1@hospital.com / admin</p>
-                <p><strong>Patient:</strong> patient1@hospital.com / admin</p>
+                <h4><i class="fas fa-info-circle"></i> Quick Login (Click to Login)</h4>
+                <p class="demo-user" data-email="admin@hospital.com" data-password="admin">
+                    <strong>👨‍💼 Admin:</strong> admin@hospital.com / admin
+                </p>
+                <p class="demo-user" data-email="doctor1@hospital.com" data-password="admin">
+                    <strong>👩‍⚕️ Doctor:</strong> doctor1@hospital.com / admin
+                </p>
+                <p class="demo-user" data-email="nurse1@hospital.com" data-password="admin">
+                    <strong>👩‍⚕️ Nurse:</strong> nurse1@hospital.com / admin
+                </p>
+                <p class="demo-user" data-email="patient1@hospital.com" data-password="admin">
+                    <strong>🧑‍🤝‍🧑 Patient:</strong> patient1@hospital.com / admin
+                </p>
+                <small style="color: #666; margin-top: 10px; display: block;">
+                    💡 Click any credential above for instant login
+                </small>
             </div>
         </div>
     </div>
@@ -253,6 +283,85 @@ if ($_POST) {
     <script>
         // Auto-focus on email field
         document.getElementById('email').focus();
+        
+        // Auto-login functionality
+        const emailField = document.getElementById('email');
+        const passwordField = document.getElementById('password');
+        const form = document.querySelector('form');
+        
+        // Demo credentials for auto-login
+        const demoCredentials = {
+            'admin@hospital.com': 'admin',
+            'doctor1@hospital.com': 'admin',
+            'nurse1@hospital.com': 'admin',
+            'patient1@hospital.com': 'admin'
+        };
+        
+        // Auto-fill and submit when password matches
+        passwordField.addEventListener('input', function() {
+            const email = emailField.value.trim();
+            const password = passwordField.value;
+            
+            // Check if it's a demo credential
+            if (demoCredentials[email] && password === demoCredentials[email]) {
+                // Show loading
+                showLoading();
+                // Auto-submit after short delay for better UX
+                setTimeout(() => {
+                    form.submit();
+                }, 300);
+            }
+        });
+        
+        // Show loading animation
+        function showLoading() {
+            const loginBtn = document.getElementById('loginBtn');
+            loginBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Signing In...';
+            loginBtn.disabled = true;
+        }
+        
+        // Form submit handler
+        form.addEventListener('submit', function(e) {
+            showLoading();
+        });
+        
+        // Auto-fill password when email is selected from demo
+        emailField.addEventListener('change', function() {
+            const email = emailField.value.trim();
+            if (demoCredentials[email]) {
+                passwordField.value = demoCredentials[email];
+                // Focus stays on password field for immediate submission
+                passwordField.focus();
+            }
+        });
+        
+        // Quick login on Enter key
+        passwordField.addEventListener('keypress', function(e) {
+            if (e.key === 'Enter') {
+                form.submit();
+            }
+        });
+        
+        // Instant login on demo user click
+        document.querySelectorAll('.demo-user').forEach(function(userElement) {
+            userElement.addEventListener('click', function() {
+                const email = this.getAttribute('data-email');
+                const password = this.getAttribute('data-password');
+                
+                // Fill form
+                emailField.value = email;
+                passwordField.value = password;
+                
+                // Visual feedback
+                this.style.background = '#c8e6c9';
+                this.innerHTML += ' <i class="fas fa-spinner fa-spin"></i>';
+                
+                // Submit form after short delay
+                setTimeout(() => {
+                    form.submit();
+                }, 500);
+            });
+        });
         
         // Clear error message after 5 seconds
         setTimeout(function() {
