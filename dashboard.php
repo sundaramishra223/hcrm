@@ -144,11 +144,72 @@ try {
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <?php renderDynamicStyles(); ?>
+    <style>
+        /* Force sidebar to show */
+        .sidebar {
+            display: block !important;
+            position: fixed !important;
+            left: 0 !important;
+            top: 0 !important;
+            width: 250px !important;
+            height: 100vh !important;
+            background: linear-gradient(135deg, #2563eb 0%, #1d4ed8 100%) !important;
+            z-index: 1000 !important;
+            overflow-y: auto !important;
+        }
+        
+        .main-content {
+            margin-left: 250px !important;
+            padding: 20px !important;
+            min-height: 100vh !important;
+        }
+        
+        .sidebar-menu {
+            list-style: none !important;
+            padding: 0 !important;
+            margin: 0 !important;
+        }
+        
+        .sidebar-menu a {
+            display: block !important;
+            padding: 15px 20px !important;
+            color: white !important;
+            text-decoration: none !important;
+            transition: all 0.3s ease !important;
+        }
+        
+        .sidebar-menu a:hover {
+            background: rgba(255,255,255,0.1) !important;
+            padding-left: 30px !important;
+        }
+        
+        .sidebar-header {
+            padding: 20px !important;
+            border-bottom: 1px solid rgba(255,255,255,0.2) !important;
+            color: white !important;
+        }
+        
+        /* Mobile responsive */
+        @media (max-width: 768px) {
+            .sidebar {
+                transform: translateX(-100%) !important;
+                transition: transform 0.3s ease !important;
+            }
+            
+            .sidebar.show {
+                transform: translateX(0) !important;
+            }
+            
+            .main-content {
+                margin-left: 0 !important;
+            }
+        }
+    </style>
 </head>
 <body>
     <div class="dashboard-container">
         <!-- Sidebar -->
-        <aside class="sidebar" id="sidebar">
+        <aside class="sidebar show" id="sidebar" style="display: block !important; position: relative !important;">
             <div class="sidebar-header">
                 <h2><i class="fas fa-hospital"></i> Hospital CRM</h2>
                 <p><?php echo htmlspecialchars($_SESSION['role_display']); ?></p>
@@ -252,6 +313,11 @@ try {
                 <?php endif; ?>
             </ul>
         </aside>
+
+        <!-- Mobile Menu Toggle -->
+        <div class="mobile-menu-toggle" onclick="toggleSidebar()" style="display: none; position: fixed; top: 20px; left: 20px; z-index: 1001; background: #2563eb; color: white; border: none; padding: 10px; border-radius: 5px; cursor: pointer;">
+            <i class="fas fa-bars"></i>
+        </div>
 
         <!-- Main Content -->
         <main class="main-content">
@@ -1347,10 +1413,35 @@ try {
             });
         }
         
+        // Mobile Sidebar Toggle
+        function toggleSidebar() {
+            const sidebar = document.getElementById('sidebar');
+            const mobileToggle = document.querySelector('.mobile-menu-toggle');
+            
+            if (sidebar) {
+                sidebar.classList.toggle('show');
+            }
+        }
+        
         // Initialize theme
         document.addEventListener('DOMContentLoaded', function() {
             const savedTheme = localStorage.getItem('theme') || 'light';
             setTheme(savedTheme);
+            
+            // Show mobile toggle on small screens
+            function checkScreenSize() {
+                const mobileToggle = document.querySelector('.mobile-menu-toggle');
+                if (mobileToggle) {
+                    if (window.innerWidth <= 768) {
+                        mobileToggle.style.display = 'block';
+                    } else {
+                        mobileToggle.style.display = 'none';
+                    }
+                }
+            }
+            
+            checkScreenSize();
+            window.addEventListener('resize', checkScreenSize);
         });
     </script>
 </body>
