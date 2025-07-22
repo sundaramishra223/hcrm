@@ -1,10 +1,26 @@
 <?php
 session_start();
+
+// Enable error reporting for debugging
+error_reporting(E_ALL);
+ini_set('display_errors', 1);
+
 require_once 'config/database.php';
 require_once 'includes/functions.php';
 
-if (!isset($_SESSION['user_id'])) {
+// Check if user is logged in
+if (!isset($_SESSION['user_id']) || !isset($_SESSION['role'])) {
+    // Clear invalid session
+    session_destroy();
     header('Location: index.php');
+    exit;
+}
+
+// Validate session (optional security check)
+if (isset($_SESSION['login_time']) && (time() - $_SESSION['login_time']) > 86400) {
+    // Session expired after 24 hours
+    session_destroy();
+    header('Location: index.php?expired=1');
     exit;
 }
 
@@ -222,11 +238,11 @@ try {
                 <?php endif; ?>
                 
                 <?php if (in_array($user_role, ['admin', 'doctor', 'intern_doctor'])): ?>
-                    <li><a href="doctors.php"><i class="fas fa-user-md"></i> Doctors</a></li>
+                    <li><a href="simple-doctors.php"><i class="fas fa-user-md"></i> Doctors</a></li>
                 <?php endif; ?>
                 
                 <?php if (in_array($user_role, ['admin', 'doctor', 'receptionist', 'intern_doctor'])): ?>
-                    <li><a href="appointments.php"><i class="fas fa-calendar-alt"></i> Appointments</a></li>
+                    <li><a href="simple-appointments.php"><i class="fas fa-calendar-alt"></i> Appointments</a></li>
                 <?php endif; ?>
                 
                 <?php if (in_array($user_role, ['admin', 'receptionist', 'pharmacy_staff', 'intern_pharmacy'])): ?>

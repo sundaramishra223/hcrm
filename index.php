@@ -1,5 +1,10 @@
 <?php
 session_start();
+
+// Enable error reporting for debugging
+error_reporting(E_ALL);
+ini_set('display_errors', 1);
+
 require_once 'config/database.php';
 
 // Redirect if already logged in
@@ -11,16 +16,20 @@ if (isset($_SESSION['user_id'])) {
 $error_message = '';
 
 if ($_POST) {
-    $email = $_POST['email'] ?? '';
+    $email = trim($_POST['email'] ?? '');
     $password = $_POST['password'] ?? '';
     
     if ($email && $password) {
         try {
             $db = new Database();
+            
+            // Simple query first to check connection
+            $test = $db->query("SELECT 1")->fetch();
+            
             $stmt = $db->query(
                 "SELECT u.*, r.role_name, r.role_display_name 
                  FROM users u 
-                 JOIN roles r ON u.role_id = r.id 
+                 LEFT JOIN roles r ON u.role_id = r.id 
                  WHERE u.email = ? AND u.is_active = 1", 
                 [$email]
             );
@@ -28,22 +37,33 @@ if ($_POST) {
             $user = $stmt->fetch();
             
             if ($user && password_verify($password, $user['password_hash'])) {
+                // Clear any existing session data
+                session_regenerate_id(true);
+                
                 $_SESSION['user_id'] = $user['id'];
                 $_SESSION['username'] = $user['username'];
                 $_SESSION['email'] = $user['email'];
-                $_SESSION['role'] = $user['role_name'];
-                $_SESSION['role_display'] = $user['role_display_name'];
+                $_SESSION['role'] = $user['role_name'] ?? 'admin';
+                $_SESSION['role_display'] = $user['role_display_name'] ?? 'Administrator';
+                $_SESSION['login_time'] = time();
                 
-                // Update last login
-                $db->query("UPDATE users SET last_login = NOW() WHERE id = ?", [$user['id']]);
+                // Update last login (with error handling)
+                try {
+                    $db->query("UPDATE users SET last_login = NOW() WHERE id = ?", [$user['id']]);
+                } catch (Exception $e) {
+                    // Log error but don't fail login
+                    error_log("Failed to update last login: " . $e->getMessage());
+                }
                 
+                // Redirect with success
                 header('Location: dashboard.php');
                 exit;
             } else {
                 $error_message = 'Invalid email or password!';
             }
         } catch (Exception $e) {
-            $error_message = 'Login failed. Please try again.';
+            $error_message = 'Login failed: ' . $e->getMessage();
+            error_log("Login error: " . $e->getMessage());
         }
     } else {
         $error_message = 'Please fill all fields!';
@@ -102,65 +122,69 @@ if ($_POST) {
         
         .form-group label {
             display: block;
+            margin-bottom: 8px;
             color: #333;
             font-weight: 500;
-            margin-bottom: 8px;
         }
         
-        .form-group input {
+        .form-control {
             width: 100%;
             padding: 12px 15px;
-            border: 2px solid #e1e1e1;
+            border: 2px solid #e1e5e9;
             border-radius: 8px;
             font-size: 16px;
-            transition: border-color 0.3s;
+            transition: all 0.3s ease;
+            box-sizing: border-box;
         }
         
-        .form-group input:focus {
+        .form-control:focus {
             outline: none;
             border-color: #004685;
+            box-shadow: 0 0 0 3px rgba(0, 70, 133, 0.1);
         }
         
-        .login-btn {
+        .btn {
             width: 100%;
-            background: #004685;
-            color: white;
             padding: 12px;
+            background: linear-gradient(135deg, #004685 0%, #0066cc 100%);
+            color: white;
             border: none;
             border-radius: 8px;
             font-size: 16px;
-            font-weight: 500;
+            font-weight: 600;
             cursor: pointer;
-            transition: background 0.3s;
+            transition: all 0.3s ease;
         }
         
-        .login-btn:hover {
-            background: #003366;
+        .btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(0, 70, 133, 0.3);
         }
         
         .error-message {
             background: #fee;
             color: #c33;
-            padding: 10px;
-            border-radius: 5px;
+            padding: 12px;
+            border-radius: 8px;
             margin-bottom: 20px;
             border: 1px solid #fcc;
+            text-align: center;
         }
         
-        .demo-users {
-            margin-top: 30px;
-            padding: 20px;
+        .demo-credentials {
             background: #f8f9fa;
+            padding: 15px;
             border-radius: 8px;
-            font-size: 12px;
+            margin-top: 20px;
+            font-size: 14px;
         }
         
-        .demo-users h4 {
-            margin-bottom: 10px;
+        .demo-credentials h4 {
+            margin: 0 0 10px 0;
             color: #004685;
         }
         
-        .demo-users p {
+        .demo-credentials p {
             margin: 5px 0;
             color: #666;
         }
@@ -170,76 +194,74 @@ if ($_POST) {
     <div class="login-container">
         <div class="login-card">
             <div class="login-header">
-                <h1><?php echo htmlspecialchars($site_config['site_name']); ?></h1>
+                <h1><i class="fas fa-hospital"></i> Hospital CRM</h1>
                 <p>Please sign in to your account</p>
             </div>
             
             <?php if ($error_message): ?>
-                <div class="error-message"><?php echo htmlspecialchars($error_message); ?></div>
+                <div class="error-message">
+                    <i class="fas fa-exclamation-triangle"></i>
+                    <?php echo htmlspecialchars($error_message); ?>
+                </div>
             <?php endif; ?>
             
-            <form method="POST">
+            <form method="POST" action="">
                 <div class="form-group">
-                    <label for="email">Email Address</label>
-                    <input type="email" id="email" name="email" required 
-                           value="<?php echo htmlspecialchars($_POST['email'] ?? ''); ?>">
+                    <label for="email">
+                        <i class="fas fa-envelope"></i> Email Address
+                    </label>
+                    <input 
+                        type="email" 
+                        id="email" 
+                        name="email" 
+                        class="form-control" 
+                        placeholder="Enter your email"
+                        value="<?php echo htmlspecialchars($_POST['email'] ?? ''); ?>"
+                        required
+                    >
                 </div>
                 
                 <div class="form-group">
-                    <label for="password">Password</label>
-                    <input type="password" id="password" name="password" required>
+                    <label for="password">
+                        <i class="fas fa-lock"></i> Password
+                    </label>
+                    <input 
+                        type="password" 
+                        id="password" 
+                        name="password" 
+                        class="form-control" 
+                        placeholder="Enter your password"
+                        required
+                    >
                 </div>
                 
-                <button type="submit" class="login-btn">Sign In</button>
+                <button type="submit" class="btn">
+                    <i class="fas fa-sign-in-alt"></i> Sign In
+                </button>
             </form>
             
-            <div class="demo-users">
-                <h4>🎮 Demo Login Credentials (Password: <strong>5und@r@M</strong>):</h4>
-                <p><strong>👨‍💼 Admin:</strong> admin@hospital.com / 5und@r@M</p>
-                <p><strong>👩‍⚕️ Doctor:</strong> dr.sharma@hospital.com / 5und@r@M</p>
-                <p><strong>🧑‍⚕️ Patient:</strong> demo@patient.com / 5und@r@M</p>
-                <p><strong>💊 Pharmacy:</strong> pharmacy@demo.com / 5und@r@M</p>
-                <p><strong>🔬 Lab Tech:</strong> lab@demo.com / 5und@r@M</p>
-                <p><strong>👩‍💼 Receptionist:</strong> reception@hospital.com / 5und@r@M</p>
-                <p><strong>👩‍⚕️ Nurse:</strong> priya.nurse@hospital.com / 5und@r@M</p>
-                <p><strong>🚗 Driver:</strong> driver@demo.com / 5und@r@M</p>
-                <small style="color: #666; margin-top: 10px; display: block;">
-                    💡 Click any credential above to auto-fill | All passwords: <strong style="color: #d63384;">5und@r@M</strong>
-                </small>
+            <div class="demo-credentials">
+                <h4><i class="fas fa-info-circle"></i> Demo Credentials</h4>
+                <p><strong>Admin:</strong> admin@hospital.com / admin</p>
+                <p><strong>Doctor:</strong> doctor1@hospital.com / admin</p>
+                <p><strong>Nurse:</strong> nurse1@hospital.com / admin</p>
+                <p><strong>Patient:</strong> patient1@hospital.com / admin</p>
             </div>
         </div>
     </div>
-
-    <!-- No password validation on login page -->
+    
     <script>
-        // Theme support for login page
-        const savedTheme = localStorage.getItem('theme') || 'light';
-        document.documentElement.setAttribute('data-theme', savedTheme);
+        // Auto-focus on email field
+        document.getElementById('email').focus();
         
-        // Demo credential fill
-        document.addEventListener('DOMContentLoaded', () => {
-            const demoUsers = document.querySelectorAll('.demo-users p');
-            demoUsers.forEach(user => {
-                user.addEventListener('click', () => {
-                    const text = user.textContent;
-                    const emailMatch = text.match(/(\S+@\S+\.\S+)/);
-                    
-                    if (emailMatch) {
-                        const email = emailMatch[1];
-                        document.getElementById('email').value = email;
-                        
-                        // All users have same password
-                        document.getElementById('password').value = '5und@r@M';
-                        
-                        // Add visual feedback
-                        user.style.background = '#d4edda';
-                        setTimeout(() => {
-                            user.style.background = '';
-                        }, 1000);
-                    }
-                });
-            });
-        });
+        // Clear error message after 5 seconds
+        setTimeout(function() {
+            const errorMsg = document.querySelector('.error-message');
+            if (errorMsg) {
+                errorMsg.style.opacity = '0';
+                setTimeout(() => errorMsg.remove(), 300);
+            }
+        }, 5000);
     </script>
 </body>
 </html>
