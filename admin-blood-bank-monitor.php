@@ -3,399 +3,604 @@ session_start();
 require_once 'config/database.php';
 require_once 'includes/functions.php';
 
-// Check if user is logged in and is admin
-if (!isset($_SESSION['user_id']) || $_SESSION['role_id'] != 1) {
+if (!isset($_SESSION['user_id']) || $_SESSION['role'] !== 'admin') {
     header('Location: index.php');
-    exit();
+    exit;
 }
 
 $db = new Database();
 
-// Get blood inventory dashboard data
-$inventory_query = "SELECT * FROM blood_inventory_dashboard ORDER BY blood_group, component_type";
-$inventory_data = $db->query($inventory_query)->fetchAll();
+// Handle AJAX requests for resolving alerts
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
+    header('Content-Type: application/json');
+    
+    if ($_POST['action'] === 'resolve_alert') {
+        $alert_id = $_POST['alert_id'];
+        $resolution_notes = $_POST['resolution_notes'] ?? '';
+        
+        $stmt = $db->prepare("UPDATE admin_monitoring SET resolved = 1, resolved_by = ?, resolved_at = datetime('now'), resolution_notes = ? WHERE id = ?");
+        $result = $stmt->execute([$_SESSION['user_id'], $resolution_notes, $alert_id]);
+        
+        echo json_encode(['success' => $result]);
+        exit;
+    }
+}
 
-// Get critical stock alerts (less than 5 units)
-$critical_stock_query = "
-    SELECT blood_group, component_type, COUNT(*) as available_units
-    FROM blood_inventory 
-    WHERE status = 'available' AND expiry_date > CURDATE()
-    GROUP BY blood_group, component_type
-    HAVING COUNT(*) < 5
-    ORDER BY COUNT(*) ASC
-";
-$critical_stock = $db->query($critical_stock_query)->fetchAll();
+// Get comprehensive blood bank statistics
+$blood_stats = [];
+$donor_stats = [];
+$recent_activities = [];
 
-// Get expiring blood (expires within 7 days)
-$expiring_blood_query = "
-    SELECT bag_number, blood_group, component_type, volume_ml, expiry_date,
-           DATEDIFF(expiry_date, CURDATE()) as days_remaining
-    FROM blood_inventory 
-    WHERE status = 'available' AND expiry_date BETWEEN CURDATE() AND DATE_ADD(CURDATE(), INTERVAL 7 DAY)
-    ORDER BY expiry_date ASC
-";
-$expiring_blood = $db->query($expiring_blood_query)->fetchAll();
+try {
+    // Blood inventory by group
+    $blood_inventory = $db->query("
+        SELECT blood_group, 
+               COUNT(*) as total_units,
+               SUM(CASE WHEN status = 'available' THEN 1 ELSE 0 END) as available_units,
+               SUM(CASE WHEN status = 'used' THEN 1 ELSE 0 END) as used_units,
+               SUM(CASE WHEN status = 'expired' THEN 1 ELSE 0 END) as expired_units,
+               SUM(CASE WHEN status = 'available' AND expiry_date <= DATE('now', '+7 days') THEN 1 ELSE 0 END) as expiring_soon,
+               SUM(CASE WHEN status = 'available' AND expiry_date <= DATE('now', '+3 days') THEN 1 ELSE 0 END) as critical_expiry,
+               MIN(CASE WHEN status = 'available' THEN expiry_date END) as earliest_expiry,
+               MAX(CASE WHEN status = 'available' THEN collection_date END) as latest_collection
+        FROM blood_inventory 
+        GROUP BY blood_group 
+        ORDER BY blood_group
+    ")->fetchAll();
 
-// Get recent donations (last 7 days)
-$recent_donations_query = "
-    SELECT bds.*, bd.donor_id, CONCAT(p.first_name, ' ', p.last_name) as donor_name,
-           CONCAT(u.first_name, ' ', u.last_name) as collected_by_name
-    FROM blood_donation_sessions bds
-    JOIN blood_donors bd ON bds.donor_id = bd.id
-    JOIN patients p ON bd.patient_id = p.id
-    JOIN users u ON bds.collected_by = u.id
-    WHERE bds.collection_date >= DATE_SUB(CURDATE(), INTERVAL 7 DAY)
-    ORDER BY bds.collection_date DESC
-    LIMIT 10
-";
-$recent_donations = $db->query($recent_donations_query)->fetchAll();
+    // Overall statistics
+    $blood_stats['total_units'] = $db->query("SELECT COUNT(*) as count FROM blood_inventory")->fetch()['count'];
+    $blood_stats['available_units'] = $db->query("SELECT COUNT(*) as count FROM blood_inventory WHERE status = 'available'")->fetch()['count'];
+    $blood_stats['used_units'] = $db->query("SELECT COUNT(*) as count FROM blood_inventory WHERE status = 'used'")->fetch()['count'];
+    $blood_stats['expired_units'] = $db->query("SELECT COUNT(*) as count FROM blood_inventory WHERE status = 'expired'")->fetch()['count'];
+    $blood_stats['expiring_soon'] = $db->query("SELECT COUNT(*) as count FROM blood_inventory WHERE status = 'available' AND expiry_date <= DATE('now', '+7 days')")->fetch()['count'];
+    $blood_stats['critical_expiry'] = $db->query("SELECT COUNT(*) as count FROM blood_inventory WHERE status = 'available' AND expiry_date <= DATE('now', '+3 days')")->fetch()['count'];
 
-// Get pending blood requests
-$pending_requests_query = "
-    SELECT br.*, CONCAT(p.first_name, ' ', p.last_name) as patient_name,
-           CONCAT(u.first_name, ' ', u.last_name) as requested_by_name
-    FROM blood_requests br
-    JOIN patients p ON br.patient_id = p.id
-    JOIN users u ON br.requested_by = u.id
-    WHERE br.status = 'pending'
-    ORDER BY br.urgency_level DESC, br.requested_date ASC
-";
-$pending_requests = $db->query($pending_requests_query)->fetchAll();
+    // Donor statistics
+    $donor_stats['total_donors'] = $db->query("SELECT COUNT(*) as count FROM blood_donors WHERE is_active = 1")->fetch()['count'];
+    $donor_stats['today_donations'] = $db->query("SELECT COUNT(*) as count FROM blood_donation_sessions WHERE collection_date = DATE('now')")->fetch()['count'];
+    $donor_stats['this_week_donations'] = $db->query("SELECT COUNT(*) as count FROM blood_donation_sessions WHERE collection_date >= DATE('now', '-7 days')")->fetch()['count'];
+    $donor_stats['this_month_donations'] = $db->query("SELECT COUNT(*) as count FROM blood_donation_sessions WHERE collection_date >= DATE('now', '-30 days')")->fetch()['count'];
 
-// Get blood bank statistics
-$stats_query = "
-    SELECT 
-        (SELECT COUNT(*) FROM blood_donors WHERE is_active = 1) as active_donors,
-        (SELECT COUNT(*) FROM blood_inventory WHERE status = 'available') as available_units,
-        (SELECT COUNT(*) FROM blood_donation_sessions WHERE DATE(collection_date) = CURDATE()) as today_donations,
-        (SELECT COUNT(*) FROM blood_usage_records WHERE DATE(usage_date) = CURDATE()) as today_usage,
-        (SELECT COUNT(*) FROM blood_requests WHERE status = 'pending') as pending_requests,
-        (SELECT COUNT(*) FROM blood_inventory WHERE status = 'available' AND expiry_date <= DATE_ADD(CURDATE(), INTERVAL 7 DAY)) as expiring_soon
-";
-$stats = $db->query($stats_query)->fetch();
+    // Blood requests
+    $blood_stats['pending_requests'] = $db->query("SELECT COUNT(*) as count FROM blood_requests WHERE status = 'pending'")->fetch()['count'];
+    $blood_stats['approved_requests'] = $db->query("SELECT COUNT(*) as count FROM blood_requests WHERE status = 'approved'")->fetch()['count'];
+    $blood_stats['urgent_requests'] = $db->query("SELECT COUNT(*) as count FROM blood_requests WHERE status = 'pending' AND urgency = 'urgent'")->fetch()['count'];
+
+    // Recent activities
+    $recent_activities = $db->query("
+        SELECT 'donation' as type, 
+               bd.donor_name, 
+               bds.blood_group, 
+               bds.collection_date, 
+               bds.collection_time,
+               bds.volume_collected
+        FROM blood_donation_sessions bds
+        JOIN blood_donors bd ON bds.donor_id = bd.id
+        WHERE bds.collection_date >= DATE('now', '-7 days')
+        ORDER BY bds.collection_date DESC, bds.collection_time DESC
+        LIMIT 10
+    ")->fetchAll();
+
+    // Blood usage records
+    $recent_usage = $db->query("
+        SELECT 'usage' as type,
+               p.first_name || ' ' || p.last_name as patient_name,
+               d.doctor_name,
+               bur.blood_group,
+               bur.component_type,
+               bur.volume_used,
+               bur.usage_date,
+               bur.usage_time,
+               bur.indication
+        FROM blood_usage_records bur
+        JOIN patients p ON bur.patient_id = p.id
+        JOIN doctors d ON bur.doctor_id = d.id
+        WHERE bur.usage_date >= DATE('now', '-7 days')
+        ORDER BY bur.usage_date DESC, bur.usage_time DESC
+        LIMIT 10
+    ")->fetchAll();
+
+    // Critical alerts
+    $critical_alerts = $db->query("
+        SELECT * FROM admin_monitoring 
+        WHERE resolved = 0 AND monitoring_category IN ('blood', 'vitals') 
+        ORDER BY 
+            CASE priority 
+                WHEN 'high' THEN 1 
+                WHEN 'medium' THEN 2 
+                WHEN 'low' THEN 3 
+            END, 
+            alert_date DESC, alert_time DESC
+        LIMIT 15
+    ")->fetchAll();
+
+} catch (Exception $e) {
+    $blood_inventory = [];
+    $blood_stats = [];
+    $donor_stats = [];
+    $recent_activities = [];
+    $recent_usage = [];
+    $critical_alerts = [];
+}
 ?>
 
 <!DOCTYPE html>
-<html lang="en">
+<html lang="en" data-theme="light">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Blood Bank Monitoring - Admin Dashboard</title>
-    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/css/bootstrap.min.css" rel="stylesheet">
+    <title>Blood Bank Monitor - Hospital CRM</title>
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
-    <style>
-        .blood-group-card { border-left: 4px solid #dc3545; }
-        .critical-alert { border-color: #dc3545 !important; background-color: #fff5f5; }
-        .warning-alert { border-color: #ffc107 !important; background-color: #fffbf0; }
-        .success-alert { border-color: #28a745 !important; background-color: #f8fff9; }
-        .blood-type-badge {
-            padding: 8px 12px;
-            border-radius: 20px;
-            font-weight: bold;
-            color: white;
-        }
-        .blood-A { background-color: #dc3545; }
-        .blood-B { background-color: #007bff; }
-        .blood-AB { background-color: #28a745; }
-        .blood-O { background-color: #ffc107; color: #000; }
-        .urgency-emergency { background-color: #dc3545; color: white; }
-        .urgency-urgent { background-color: #fd7e14; color: white; }
-        .urgency-routine { background-color: #6c757d; color: white; }
-        .stat-card {
-            transition: transform 0.2s;
-        }
-        .stat-card:hover {
-            transform: translateY(-5px);
-        }
-    </style>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <link href="assets/css/dashboard.css" rel="stylesheet">
 </head>
-<body class="bg-light">
-    <?php include 'includes/header.php'; ?>
-
-    <div class="container-fluid mt-4">
-        <div class="row">
-            <div class="col-md-2">
-                <?php include 'includes/sidebar.php'; ?>
+<body>
+    <div class="dashboard-container">
+        <!-- Sidebar -->
+        <aside class="sidebar">
+            <div class="sidebar-header">
+                <div class="logo">
+                    <i class="fas fa-heartbeat"></i>
+                    <span>Hospital CRM</span>
+                </div>
             </div>
-            
-            <div class="col-md-10">
-                <!-- Page Header -->
-                <div class="d-flex justify-content-between align-items-center mb-4">
-                    <h2><i class="fas fa-tint text-danger"></i> Blood Bank Monitoring Dashboard</h2>
-                    <div>
-                        <button class="btn btn-outline-primary" onclick="window.location.reload()">
-                            <i class="fas fa-sync-alt"></i> Refresh Data
+            <nav class="sidebar-nav">
+                <ul>
+                    <li><a href="dashboard.php"><i class="fas fa-home"></i> Dashboard</a></li>
+                    <li><a href="blood-bank-management.php"><i class="fas fa-tint"></i> Blood Bank</a></li>
+                    <li><a href="admin-blood-bank-monitor.php" class="active"><i class="fas fa-chart-line"></i> Blood Monitor</a></li>
+                    <li><a href="patient-monitoring.php"><i class="fas fa-user-injured"></i> Patient Monitor</a></li>
+                    <li><a href="insurance-management.php"><i class="fas fa-shield-alt"></i> Insurance</a></li>
+                    <li><a href="settings.php"><i class="fas fa-cog"></i> Settings</a></li>
+                </ul>
+            </nav>
+        </aside>
+
+        <!-- Main Content -->
+        <main class="main-content">
+            <!-- Header -->
+            <div class="dashboard-header">
+                <div class="header-left">
+                    <h1><i class="fas fa-tint"></i> Blood Bank Monitoring Dashboard</h1>
+                    <p>Real-time blood inventory and donor management</p>
+                </div>
+                <div class="header-right">
+                    <div class="header-actions">
+                        <button class="btn btn-success" onclick="window.location.href='blood-donation-tracking.php'">
+                            <i class="fas fa-hand-holding-heart"></i> Add Donation
                         </button>
-                        <a href="blood-donation-tracking.php" class="btn btn-primary">
-                            <i class="fas fa-plus"></i> Add Donation
-                        </a>
+                        <button class="btn btn-primary" onclick="refreshData()">
+                            <i class="fas fa-sync-alt"></i> Refresh
+                        </button>
                     </div>
+                    <a href="logout.php" class="btn btn-danger btn-sm">
+                        <i class="fas fa-sign-out-alt"></i> Logout
+                    </a>
                 </div>
+            </div>
 
-                <!-- Statistics Cards -->
-                <div class="row mb-4">
-                    <div class="col-md-2">
-                        <div class="card stat-card border-primary">
-                            <div class="card-body text-center">
-                                <i class="fas fa-users fa-2x text-primary mb-2"></i>
-                                <h4 class="text-primary"><?php echo $stats['active_donors']; ?></h4>
-                                <small class="text-muted">Active Donors</small>
-                            </div>
-                        </div>
-                    </div>
-                    <div class="col-md-2">
-                        <div class="card stat-card border-success">
-                            <div class="card-body text-center">
-                                <i class="fas fa-vial fa-2x text-success mb-2"></i>
-                                <h4 class="text-success"><?php echo $stats['available_units']; ?></h4>
-                                <small class="text-muted">Available Units</small>
-                            </div>
-                        </div>
-                    </div>
-                    <div class="col-md-2">
-                        <div class="card stat-card border-info">
-                            <div class="card-body text-center">
-                                <i class="fas fa-plus fa-2x text-info mb-2"></i>
-                                <h4 class="text-info"><?php echo $stats['today_donations']; ?></h4>
-                                <small class="text-muted">Today's Donations</small>
-                            </div>
-                        </div>
-                    </div>
-                    <div class="col-md-2">
-                        <div class="card stat-card border-warning">
-                            <div class="card-body text-center">
-                                <i class="fas fa-minus fa-2x text-warning mb-2"></i>
-                                <h4 class="text-warning"><?php echo $stats['today_usage']; ?></h4>
-                                <small class="text-muted">Today's Usage</small>
-                            </div>
-                        </div>
-                    </div>
-                    <div class="col-md-2">
-                        <div class="card stat-card border-danger">
-                            <div class="card-body text-center">
-                                <i class="fas fa-clock fa-2x text-danger mb-2"></i>
-                                <h4 class="text-danger"><?php echo $stats['pending_requests']; ?></h4>
-                                <small class="text-muted">Pending Requests</small>
-                            </div>
-                        </div>
-                    </div>
-                    <div class="col-md-2">
-                        <div class="card stat-card border-secondary">
-                            <div class="card-body text-center">
-                                <i class="fas fa-exclamation-triangle fa-2x text-secondary mb-2"></i>
-                                <h4 class="text-secondary"><?php echo $stats['expiring_soon']; ?></h4>
-                                <small class="text-muted">Expiring Soon</small>
-                            </div>
-                        </div>
-                    </div>
+            <!-- Quick Stats -->
+            <div class="stats-grid">
+                <div class="stat-card blood-card">
+                    <h3><?php echo number_format($blood_stats['available_units'] ?? 0); ?></h3>
+                    <p>Available Units</p>
+                    <i class="fas fa-tint stat-icon"></i>
                 </div>
+                <div class="stat-card donor-card">
+                    <h3><?php echo number_format($donor_stats['total_donors'] ?? 0); ?></h3>
+                    <p>Active Donors</p>
+                    <i class="fas fa-hand-holding-heart stat-icon"></i>
+                </div>
+                <div class="stat-card <?php echo ($blood_stats['expiring_soon'] ?? 0) > 0 ? 'warning-card' : ''; ?>">
+                    <h3><?php echo number_format($blood_stats['expiring_soon'] ?? 0); ?></h3>
+                    <p>Expiring Soon</p>
+                    <i class="fas fa-exclamation-triangle stat-icon"></i>
+                </div>
+                <div class="stat-card <?php echo ($blood_stats['critical_expiry'] ?? 0) > 0 ? 'alert-card' : ''; ?>">
+                    <h3><?php echo number_format($blood_stats['critical_expiry'] ?? 0); ?></h3>
+                    <p>Critical Expiry</p>
+                    <i class="fas fa-exclamation-circle stat-icon"></i>
+                </div>
+                <div class="stat-card">
+                    <h3><?php echo number_format($blood_stats['pending_requests'] ?? 0); ?></h3>
+                    <p>Pending Requests</p>
+                    <i class="fas fa-clipboard-list stat-icon"></i>
+                </div>
+                <div class="stat-card success-card">
+                    <h3><?php echo number_format($donor_stats['today_donations'] ?? 0); ?></h3>
+                    <p>Today's Donations</p>
+                    <i class="fas fa-calendar-day stat-icon"></i>
+                </div>
+            </div>
 
-                <!-- Critical Alerts -->
-                <?php if (!empty($critical_stock) || !empty($expiring_blood)): ?>
-                <div class="row mb-4">
-                    <div class="col-12">
-                        <div class="card border-danger">
-                            <div class="card-header bg-danger text-white">
-                                <h5><i class="fas fa-exclamation-triangle"></i> Critical Alerts</h5>
+            <!-- Blood Inventory by Group -->
+            <div class="dashboard-section">
+                <h2><i class="fas fa-tint"></i> Blood Group Inventory</h2>
+                <div class="blood-inventory-grid">
+                    <?php if (!empty($blood_inventory)): ?>
+                        <?php foreach ($blood_inventory as $blood): ?>
+                        <div class="blood-group-card <?php echo $blood['critical_expiry'] > 0 ? 'critical' : ($blood['expiring_soon'] > 0 ? 'warning' : ''); ?>">
+                            <div class="blood-group-header">
+                                <h3><?php echo htmlspecialchars($blood['blood_group']); ?></h3>
+                                <span class="blood-drop"><i class="fas fa-tint"></i></span>
                             </div>
-                            <div class="card-body">
-                                <div class="row">
-                                    <?php if (!empty($critical_stock)): ?>
-                                    <div class="col-md-6">
-                                        <h6 class="text-danger">Critical Stock Levels (< 5 units)</h6>
-                                        <?php foreach ($critical_stock as $stock): ?>
-                                        <div class="alert alert-danger p-2 mb-2">
-                                            <strong><?php echo $stock['blood_group']; ?> - <?php echo ucfirst(str_replace('_', ' ', $stock['component_type'])); ?></strong>
-                                            <span class="badge bg-danger ms-2"><?php echo $stock['available_units']; ?> units left</span>
-                                        </div>
-                                        <?php endforeach; ?>
-                                    </div>
-                                    <?php endif; ?>
-                                    
-                                    <?php if (!empty($expiring_blood)): ?>
-                                    <div class="col-md-6">
-                                        <h6 class="text-warning">Expiring Within 7 Days</h6>
-                                        <?php foreach ($expiring_blood as $blood): ?>
-                                        <div class="alert alert-warning p-2 mb-2">
-                                            <strong><?php echo $blood['bag_number']; ?></strong> - <?php echo $blood['blood_group']; ?>
-                                            <span class="badge bg-warning text-dark ms-2"><?php echo $blood['days_remaining']; ?> days left</span>
-                                        </div>
-                                        <?php endforeach; ?>
-                                    </div>
-                                    <?php endif; ?>
+                            <div class="blood-stats">
+                                <div class="stat-item">
+                                    <span class="stat-value"><?php echo $blood['available_units']; ?></span>
+                                    <span class="stat-label">Available</span>
+                                </div>
+                                <div class="stat-item">
+                                    <span class="stat-value"><?php echo $blood['used_units']; ?></span>
+                                    <span class="stat-label">Used</span>
+                                </div>
+                                <div class="stat-item">
+                                    <span class="stat-value"><?php echo $blood['expired_units']; ?></span>
+                                    <span class="stat-label">Expired</span>
                                 </div>
                             </div>
-                        </div>
-                    </div>
-                </div>
-                <?php endif; ?>
-
-                <div class="row">
-                    <!-- Blood Inventory Overview -->
-                    <div class="col-md-6">
-                        <div class="card">
-                            <div class="card-header">
-                                <h5><i class="fas fa-chart-bar"></i> Blood Inventory Overview</h5>
+                            
+                            <?php if ($blood['expiring_soon'] > 0): ?>
+                            <div class="expiry-warning">
+                                <i class="fas fa-exclamation-triangle"></i>
+                                <?php echo $blood['expiring_soon']; ?> units expiring within 7 days
                             </div>
-                            <div class="card-body">
-                                <div class="table-responsive">
-                                    <table class="table table-sm">
-                                        <thead>
-                                            <tr>
-                                                <th>Blood Group</th>
-                                                <th>Component</th>
-                                                <th>Available</th>
-                                                <th>Total</th>
-                                                <th>Status</th>
-                                            </tr>
-                                        </thead>
-                                        <tbody>
-                                            <?php foreach ($inventory_data as $item): ?>
-                                            <tr>
-                                                <td>
-                                                    <span class="blood-type-badge blood-<?php echo substr($item['blood_group'], 0, -1); ?>">
-                                                        <?php echo $item['blood_group']; ?>
-                                                    </span>
-                                                </td>
-                                                <td><?php echo ucfirst(str_replace('_', ' ', $item['component_type'])); ?></td>
-                                                <td><strong><?php echo $item['available_units']; ?></strong></td>
-                                                <td><?php echo $item['total_units']; ?></td>
-                                                <td>
-                                                    <?php if ($item['available_units'] < 5): ?>
-                                                        <span class="badge bg-danger">Critical</span>
-                                                    <?php elseif ($item['available_units'] < 10): ?>
-                                                        <span class="badge bg-warning">Low</span>
-                                                    <?php else: ?>
-                                                        <span class="badge bg-success">Good</span>
-                                                    <?php endif; ?>
-                                                </td>
-                                            </tr>
-                                            <?php endforeach; ?>
-                                        </tbody>
-                                    </table>
+                            <?php endif; ?>
+                            
+                            <?php if ($blood['critical_expiry'] > 0): ?>
+                            <div class="critical-warning">
+                                <i class="fas fa-exclamation-circle"></i>
+                                <?php echo $blood['critical_expiry']; ?> units expiring within 3 days!
+                            </div>
+                            <?php endif; ?>
+                            
+                            <div class="blood-details">
+                                <small>
+                                    Next Expiry: <?php echo $blood['earliest_expiry'] ? date('M d, Y', strtotime($blood['earliest_expiry'])) : 'N/A'; ?><br>
+                                    Latest Collection: <?php echo $blood['latest_collection'] ? date('M d, Y', strtotime($blood['latest_collection'])) : 'N/A'; ?>
+                                </small>
+                            </div>
+                        </div>
+                        <?php endforeach; ?>
+                    <?php else: ?>
+                        <div class="no-data">
+                            <i class="fas fa-info-circle"></i>
+                            <p>No blood inventory data available</p>
+                        </div>
+                    <?php endif; ?>
+                </div>
+            </div>
+
+            <!-- Recent Activities -->
+            <div class="activities-section">
+                <div class="activity-column">
+                    <h2><i class="fas fa-hand-holding-heart"></i> Recent Donations</h2>
+                    <div class="activity-list">
+                        <?php if (!empty($recent_activities)): ?>
+                            <?php foreach ($recent_activities as $activity): ?>
+                            <div class="activity-item donation">
+                                <div class="activity-icon">
+                                    <i class="fas fa-hand-holding-heart"></i>
+                                </div>
+                                <div class="activity-content">
+                                    <h4><?php echo htmlspecialchars($activity['donor_name']); ?></h4>
+                                    <p>Donated <?php echo $activity['volume_collected']; ?>ml of <?php echo $activity['blood_group']; ?> blood</p>
+                                    <small><?php echo date('M d, Y H:i', strtotime($activity['collection_date'] . ' ' . $activity['collection_time'])); ?></small>
                                 </div>
                             </div>
-                        </div>
-                    </div>
-
-                    <!-- Pending Blood Requests -->
-                    <div class="col-md-6">
-                        <div class="card">
-                            <div class="card-header">
-                                <h5><i class="fas fa-exclamation-circle"></i> Pending Blood Requests</h5>
+                            <?php endforeach; ?>
+                        <?php else: ?>
+                            <div class="no-activities">
+                                <i class="fas fa-info-circle"></i>
+                                <p>No recent donations</p>
                             </div>
-                            <div class="card-body">
-                                <?php if (empty($pending_requests)): ?>
-                                    <p class="text-muted text-center">No pending requests</p>
-                                <?php else: ?>
-                                    <div class="table-responsive">
-                                        <table class="table table-sm">
-                                            <thead>
-                                                <tr>
-                                                    <th>Request#</th>
-                                                    <th>Patient</th>
-                                                    <th>Blood Type</th>
-                                                    <th>Units</th>
-                                                    <th>Urgency</th>
-                                                    <th>Action</th>
-                                                </tr>
-                                            </thead>
-                                            <tbody>
-                                                <?php foreach ($pending_requests as $request): ?>
-                                                <tr>
-                                                    <td><?php echo $request['request_number']; ?></td>
-                                                    <td><?php echo $request['patient_name']; ?></td>
-                                                    <td>
-                                                        <span class="blood-type-badge blood-<?php echo substr($request['blood_group'], 0, -1); ?>">
-                                                            <?php echo $request['blood_group']; ?>
-                                                        </span>
-                                                    </td>
-                                                    <td><?php echo $request['units_needed']; ?></td>
-                                                    <td>
-                                                        <span class="badge urgency-<?php echo $request['urgency_level']; ?>">
-                                                            <?php echo ucfirst($request['urgency_level']); ?>
-                                                        </span>
-                                                    </td>
-                                                    <td>
-                                                        <a href="blood-request-details.php?id=<?php echo $request['id']; ?>" 
-                                                           class="btn btn-sm btn-primary">Process</a>
-                                                    </td>
-                                                </tr>
-                                                <?php endforeach; ?>
-                                            </tbody>
-                                        </table>
-                                    </div>
-                                <?php endif; ?>
-                            </div>
-                        </div>
+                        <?php endif; ?>
                     </div>
                 </div>
 
-                <!-- Recent Donations -->
-                <div class="row mt-4">
-                    <div class="col-12">
-                        <div class="card">
-                            <div class="card-header">
-                                <h5><i class="fas fa-history"></i> Recent Donations (Last 7 Days)</h5>
+                <div class="activity-column">
+                    <h2><i class="fas fa-syringe"></i> Recent Blood Usage</h2>
+                    <div class="activity-list">
+                        <?php if (!empty($recent_usage)): ?>
+                            <?php foreach ($recent_usage as $usage): ?>
+                            <div class="activity-item usage">
+                                <div class="activity-icon">
+                                    <i class="fas fa-syringe"></i>
+                                </div>
+                                <div class="activity-content">
+                                    <h4><?php echo htmlspecialchars($usage['patient_name']); ?></h4>
+                                    <p><?php echo $usage['volume_used']; ?>ml of <?php echo $usage['blood_group']; ?> <?php echo $usage['component_type']; ?></p>
+                                    <p><strong>Doctor:</strong> <?php echo htmlspecialchars($usage['doctor_name']); ?></p>
+                                    <p><strong>Indication:</strong> <?php echo htmlspecialchars($usage['indication']); ?></p>
+                                    <small><?php echo date('M d, Y H:i', strtotime($usage['usage_date'] . ' ' . $usage['usage_time'])); ?></small>
+                                </div>
                             </div>
-                            <div class="card-body">
-                                <?php if (empty($recent_donations)): ?>
-                                    <p class="text-muted text-center">No recent donations</p>
-                                <?php else: ?>
-                                    <div class="table-responsive">
-                                        <table class="table">
-                                            <thead>
-                                                <tr>
-                                                    <th>Date</th>
-                                                    <th>Donor</th>
-                                                    <th>Donor ID</th>
-                                                    <th>Type</th>
-                                                    <th>Volume (ml)</th>
-                                                    <th>Collected By</th>
-                                                    <th>Status</th>
-                                                </tr>
-                                            </thead>
-                                            <tbody>
-                                                <?php foreach ($recent_donations as $donation): ?>
-                                                <tr>
-                                                    <td><?php echo date('M d, Y H:i', strtotime($donation['collection_date'])); ?></td>
-                                                    <td><?php echo $donation['donor_name']; ?></td>
-                                                    <td><?php echo $donation['donor_id']; ?></td>
-                                                    <td><?php echo ucfirst(str_replace('_', ' ', $donation['donation_type'])); ?></td>
-                                                    <td><?php echo $donation['volume_collected']; ?></td>
-                                                    <td><?php echo $donation['collected_by_name']; ?></td>
-                                                    <td>
-                                                        <span class="badge bg-<?php echo $donation['status'] == 'completed' ? 'success' : 'warning'; ?>">
-                                                            <?php echo ucfirst($donation['status']); ?>
-                                                        </span>
-                                                    </td>
-                                                </tr>
-                                                <?php endforeach; ?>
-                                            </tbody>
-                                        </table>
-                                    </div>
-                                <?php endif; ?>
+                            <?php endforeach; ?>
+                        <?php else: ?>
+                            <div class="no-activities">
+                                <i class="fas fa-info-circle"></i>
+                                <p>No recent blood usage</p>
                             </div>
-                        </div>
+                        <?php endif; ?>
                     </div>
                 </div>
             </div>
-        </div>
+
+            <!-- Critical Alerts -->
+            <div class="dashboard-section">
+                <h2><i class="fas fa-bell"></i> Critical Alerts</h2>
+                <div class="alerts-grid">
+                    <?php if (!empty($critical_alerts)): ?>
+                        <?php foreach ($critical_alerts as $alert): ?>
+                        <div class="alert-card <?php echo $alert['priority']; ?>" data-alert-id="<?php echo $alert['id']; ?>">
+                            <div class="alert-icon">
+                                <?php
+                                $icons = [
+                                    'vitals' => 'fa-heartbeat',
+                                    'blood' => 'fa-tint',
+                                    'inventory' => 'fa-pills',
+                                    'equipment' => 'fa-tools',
+                                    'insurance' => 'fa-shield-alt'
+                                ];
+                                echo '<i class="fas ' . ($icons[$alert['monitoring_category']] ?? 'fa-exclamation-triangle') . '"></i>';
+                                ?>
+                            </div>
+                            <div class="alert-content">
+                                <h4><?php echo ucfirst($alert['monitoring_category']); ?> Alert - <?php echo ucfirst($alert['priority']); ?> Priority</h4>
+                                <p><?php echo htmlspecialchars($alert['alert_message']); ?></p>
+                                <small><?php echo date('M d, Y H:i', strtotime($alert['alert_date'] . ' ' . $alert['alert_time'])); ?></small>
+                            </div>
+                            <div class="alert-actions">
+                                <button class="btn btn-sm btn-success resolve-alert" onclick="resolveAlert(<?php echo $alert['id']; ?>)">
+                                    <i class="fas fa-check"></i> Resolve
+                                </button>
+                            </div>
+                        </div>
+                        <?php endforeach; ?>
+                    <?php else: ?>
+                        <div class="no-alerts">
+                            <i class="fas fa-check-circle"></i>
+                            <p>No critical alerts. All systems are running smoothly!</p>
+                        </div>
+                    <?php endif; ?>
+                </div>
+            </div>
+        </main>
     </div>
 
-    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.bundle.min.js"></script>
     <script>
-        // Auto-refresh every 5 minutes
-        setTimeout(function() {
-            window.location.reload();
-        }, 300000);
+        // Refresh data
+        function refreshData() {
+            location.reload();
+        }
 
-        // Show alerts for critical stock
-        <?php if (!empty($critical_stock)): ?>
-        setTimeout(function() {
-            alert('⚠️ CRITICAL ALERT: Low blood stock detected!\nPlease arrange for blood collection immediately.');
-        }, 1000);
-        <?php endif; ?>
+        // Resolve alert function
+        function resolveAlert(alertId) {
+            const resolution_notes = prompt('Enter resolution notes (optional):');
+            
+            fetch('admin-blood-bank-monitor.php', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/x-www-form-urlencoded',
+                },
+                body: `action=resolve_alert&alert_id=${alertId}&resolution_notes=${encodeURIComponent(resolution_notes || '')}`
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    const alertCard = document.querySelector(`[data-alert-id="${alertId}"]`);
+                    if (alertCard) {
+                        alertCard.style.opacity = '0.5';
+                        alertCard.style.transform = 'scale(0.95)';
+                        setTimeout(() => {
+                            alertCard.remove();
+                        }, 500);
+                    }
+                    
+                    // Show success message
+                    showNotification('Alert resolved successfully!', 'success');
+                } else {
+                    showNotification('Failed to resolve alert. Please try again.', 'error');
+                }
+            })
+            .catch(error => {
+                console.error('Error:', error);
+                showNotification('An error occurred. Please try again.', 'error');
+            });
+        }
+
+        // Show notification
+        function showNotification(message, type) {
+            const notification = document.createElement('div');
+            notification.className = `notification ${type}`;
+            notification.innerHTML = `
+                <i class="fas ${type === 'success' ? 'fa-check-circle' : 'fa-exclamation-triangle'}"></i>
+                <span>${message}</span>
+            `;
+            
+            document.body.appendChild(notification);
+            
+            setTimeout(() => {
+                notification.classList.add('show');
+            }, 100);
+            
+            setTimeout(() => {
+                notification.classList.remove('show');
+                setTimeout(() => {
+                    notification.remove();
+                }, 300);
+            }, 3000);
+        }
+
+        // Auto refresh every 5 minutes
+        setInterval(refreshData, 300000);
+
+        // Add pulse animation to critical alerts
+        document.addEventListener('DOMContentLoaded', function() {
+            const criticalAlerts = document.querySelectorAll('.alert-card.high');
+            criticalAlerts.forEach(alert => {
+                alert.style.animation = 'pulse 2s infinite';
+            });
+        });
     </script>
+
+    <style>
+        .blood-group-card.critical {
+            background: linear-gradient(135deg, #dc3545 0%, #c82333 100%);
+            animation: pulse 2s infinite;
+        }
+
+        .blood-group-card.warning {
+            background: linear-gradient(135deg, #ffc107 0%, #e0a800 100%);
+        }
+
+        .expiry-warning, .critical-warning {
+            background: rgba(255, 255, 255, 0.2);
+            padding: 0.5rem;
+            border-radius: 4px;
+            margin: 0.5rem 0;
+            font-size: 0.85rem;
+        }
+
+        .critical-warning {
+            background: rgba(220, 53, 69, 0.9);
+            color: white;
+            font-weight: bold;
+        }
+
+        .activities-section {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 2rem;
+            margin: 2rem 0;
+        }
+
+        .activity-column {
+            background: var(--card-bg);
+            padding: 1.5rem;
+            border-radius: var(--border-radius);
+            box-shadow: var(--shadow);
+        }
+
+        .activity-list {
+            max-height: 400px;
+            overflow-y: auto;
+        }
+
+        .activity-item {
+            display: flex;
+            align-items: flex-start;
+            gap: 1rem;
+            padding: 1rem;
+            border-bottom: 1px solid var(--border-color);
+            transition: all 0.3s ease;
+        }
+
+        .activity-item:hover {
+            background: var(--hover-bg);
+            transform: translateX(5px);
+        }
+
+        .activity-item:last-child {
+            border-bottom: none;
+        }
+
+        .activity-icon {
+            width: 40px;
+            height: 40px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 1.2rem;
+            color: white;
+        }
+
+        .activity-item.donation .activity-icon {
+            background: linear-gradient(135deg, #28a745 0%, #20c997 100%);
+        }
+
+        .activity-item.usage .activity-icon {
+            background: linear-gradient(135deg, #dc3545 0%, #fd7e14 100%);
+        }
+
+        .activity-content h4 {
+            margin: 0 0 0.5rem 0;
+            color: var(--text-color);
+            font-size: 1rem;
+        }
+
+        .activity-content p {
+            margin: 0.25rem 0;
+            color: var(--text-secondary);
+            font-size: 0.9rem;
+        }
+
+        .activity-content small {
+            color: var(--text-muted);
+        }
+
+        .no-activities, .no-data {
+            text-align: center;
+            padding: 2rem;
+            color: var(--text-secondary);
+        }
+
+        .no-activities i, .no-data i {
+            font-size: 2rem;
+            margin-bottom: 1rem;
+            opacity: 0.5;
+        }
+
+        .success-card {
+            background: linear-gradient(135deg, #28a745 0%, #20c997 100%);
+            color: white;
+        }
+
+        .notification {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            background: var(--card-bg);
+            color: var(--text-color);
+            padding: 1rem 1.5rem;
+            border-radius: var(--border-radius);
+            box-shadow: var(--shadow);
+            z-index: 1000;
+            transform: translateX(100%);
+            transition: transform 0.3s ease;
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+
+        .notification.show {
+            transform: translateX(0);
+        }
+
+        .notification.success {
+            border-left: 4px solid #28a745;
+        }
+
+        .notification.error {
+            border-left: 4px solid #dc3545;
+        }
+
+        @keyframes pulse {
+            0% { box-shadow: 0 0 0 0 rgba(220, 53, 69, 0.7); }
+            70% { box-shadow: 0 0 0 10px rgba(220, 53, 69, 0); }
+            100% { box-shadow: 0 0 0 0 rgba(220, 53, 69, 0); }
+        }
+
+        @media (max-width: 768px) {
+            .activities-section {
+                grid-template-columns: 1fr;
+            }
+            
+            .stats-grid {
+                grid-template-columns: repeat(2, 1fr);
+            }
+        }
+    </style>
 </body>
 </html>

@@ -25,6 +25,31 @@ try {
         $stats['occupied_beds'] = $db->query("SELECT COUNT(*) as count FROM beds WHERE status = 'occupied'")->fetch()['count'];
         $stats['total_staff'] = $db->query("SELECT COUNT(*) as count FROM staff")->fetch()['count'];
         $stats['today_visits'] = $db->query("SELECT COUNT(*) as count FROM patient_visits WHERE visit_date = CURDATE()")->fetch()['count'];
+        
+        // Blood Bank Statistics
+        $stats['total_blood_units'] = $db->query("SELECT COUNT(*) as count FROM blood_inventory WHERE status = 'available'")->fetch()['count'];
+        $stats['total_donors'] = $db->query("SELECT COUNT(*) as count FROM blood_donors WHERE is_active = 1")->fetch()['count'];
+        $stats['expiring_soon'] = $db->query("SELECT COUNT(*) as count FROM blood_inventory WHERE status = 'available' AND expiry_date <= DATE('now', '+7 days')")->fetch()['count'];
+        $stats['today_donations'] = $db->query("SELECT COUNT(*) as count FROM blood_donation_sessions WHERE collection_date = DATE('now')")->fetch()['count'];
+        $stats['pending_requests'] = $db->query("SELECT COUNT(*) as count FROM blood_requests WHERE status = 'pending'")->fetch()['count'];
+        
+        // Insurance Statistics
+        $stats['active_policies'] = $db->query("SELECT COUNT(*) as count FROM insurance_policies WHERE policy_status = 'active' AND policy_end_date >= DATE('now')")->fetch()['count'];
+        $stats['pending_claims'] = $db->query("SELECT COUNT(*) as count FROM insurance_claims WHERE claim_status = 'submitted'")->fetch()['count'];
+        $stats['critical_vitals'] = $db->query("SELECT COUNT(*) as count FROM patient_vitals WHERE is_critical = 1 AND DATE(vital_date) = DATE('now')")->fetch()['count'];
+        $stats['admin_alerts'] = $db->query("SELECT COUNT(*) as count FROM admin_monitoring WHERE resolved = 0")->fetch()['count'];
+        
+        // Blood Group Wise Inventory
+        $blood_inventory = $db->query("
+            SELECT blood_group, 
+                   COUNT(*) as total_units,
+                   SUM(CASE WHEN status = 'available' THEN 1 ELSE 0 END) as available_units,
+                   SUM(CASE WHEN status = 'available' AND expiry_date <= DATE('now', '+7 days') THEN 1 ELSE 0 END) as expiring_soon,
+                   MIN(expiry_date) as earliest_expiry
+            FROM blood_inventory 
+            GROUP BY blood_group 
+            ORDER BY blood_group
+        ")->fetchAll();
     } elseif ($user_role === 'doctor') {
         $doctor_id = $db->query("SELECT id FROM doctors WHERE user_id = ?", [$_SESSION['user_id']])->fetch()['id'];
         $stats['my_patients'] = $db->query("SELECT COUNT(*) as count FROM patients WHERE assigned_doctor_id = ?", [$doctor_id])->fetch()['count'];
@@ -273,6 +298,31 @@ try {
                         <p>Today's Appointments</p>
                         <i class="fas fa-calendar-check stat-icon"></i>
                     </div>
+                    <div class="stat-card blood-card">
+                        <h3><?php echo number_format($stats['total_blood_units'] ?? 0); ?></h3>
+                        <p>Available Blood Units</p>
+                        <i class="fas fa-tint stat-icon"></i>
+                    </div>
+                    <div class="stat-card donor-card">
+                        <h3><?php echo number_format($stats['total_donors'] ?? 0); ?></h3>
+                        <p>Active Donors</p>
+                        <i class="fas fa-hand-holding-heart stat-icon"></i>
+                    </div>
+                    <div class="stat-card <?php echo ($stats['expiring_soon'] ?? 0) > 0 ? 'warning-card' : ''; ?>">
+                        <h3><?php echo number_format($stats['expiring_soon'] ?? 0); ?></h3>
+                        <p>Expiring Soon</p>
+                        <i class="fas fa-exclamation-triangle stat-icon"></i>
+                    </div>
+                    <div class="stat-card insurance-card">
+                        <h3><?php echo number_format($stats['active_policies'] ?? 0); ?></h3>
+                        <p>Active Policies</p>
+                        <i class="fas fa-shield-alt stat-icon"></i>
+                    </div>
+                    <div class="stat-card <?php echo ($stats['admin_alerts'] ?? 0) > 0 ? 'alert-card' : ''; ?>">
+                        <h3><?php echo number_format($stats['admin_alerts'] ?? 0); ?></h3>
+                        <p>Admin Alerts</p>
+                        <i class="fas fa-bell stat-icon"></i>
+                    </div>
                     <div class="stat-card">
                         <h3>₹<?php echo number_format($stats['total_revenue'] ?? 0, 2); ?></h3>
                         <p>Today's Revenue</p>
@@ -298,6 +348,101 @@ try {
                         <p>Occupied Beds</p>
                         <i class="fas fa-user-in-bed stat-icon"></i>
                     </div>
+                </div>
+
+                <!-- Blood Bank Inventory Table (Admin Only) -->
+                <?php if ($user_role === 'admin' && !empty($blood_inventory)): ?>
+                <div class="dashboard-section">
+                    <h2><i class="fas fa-tint"></i> Blood Bank Inventory</h2>
+                    <div class="blood-inventory-grid">
+                        <?php foreach ($blood_inventory as $blood): ?>
+                        <div class="blood-group-card <?php echo $blood['expiring_soon'] > 0 ? 'warning' : ''; ?>">
+                            <div class="blood-group-header">
+                                <h3><?php echo htmlspecialchars($blood['blood_group']); ?></h3>
+                                <span class="blood-drop"><i class="fas fa-tint"></i></span>
+                            </div>
+                            <div class="blood-stats">
+                                <div class="stat-item">
+                                    <span class="stat-value"><?php echo $blood['available_units']; ?></span>
+                                    <span class="stat-label">Available</span>
+                                </div>
+                                <div class="stat-item">
+                                    <span class="stat-value"><?php echo $blood['total_units']; ?></span>
+                                    <span class="stat-label">Total</span>
+                                </div>
+                                <?php if ($blood['expiring_soon'] > 0): ?>
+                                <div class="stat-item warning">
+                                    <span class="stat-value"><?php echo $blood['expiring_soon']; ?></span>
+                                    <span class="stat-label">Expiring</span>
+                                </div>
+                                <?php endif; ?>
+                            </div>
+                            <div class="blood-expiry">
+                                <small>Next Expiry: <?php echo date('M d, Y', strtotime($blood['earliest_expiry'])); ?></small>
+                            </div>
+                        </div>
+                        <?php endforeach; ?>
+                    </div>
+                    
+                    <div class="blood-actions">
+                        <a href="blood-bank-management.php" class="btn btn-primary">
+                            <i class="fas fa-tint"></i> Manage Blood Bank
+                        </a>
+                        <a href="blood-donation-tracking.php" class="btn btn-success">
+                            <i class="fas fa-hand-holding-heart"></i> Track Donations
+                        </a>
+                        <a href="admin-blood-bank-monitor.php" class="btn btn-info">
+                            <i class="fas fa-chart-line"></i> Blood Bank Monitor
+                        </a>
+                    </div>
+                </div>
+                <?php endif; ?>
+
+                <!-- Admin Alerts Section -->
+                <?php if ($user_role === 'admin'): ?>
+                <div class="dashboard-section">
+                    <h2><i class="fas fa-bell"></i> System Alerts</h2>
+                    <div class="alerts-grid">
+                        <?php
+                        $alerts = $db->query("SELECT * FROM admin_monitoring WHERE resolved = 0 ORDER BY priority DESC, alert_date DESC LIMIT 10")->fetchAll();
+                        if (!empty($alerts)):
+                        foreach ($alerts as $alert): ?>
+                        <div class="alert-card <?php echo $alert['priority']; ?>">
+                            <div class="alert-icon">
+                                <?php
+                                $icons = [
+                                    'vitals' => 'fa-heartbeat',
+                                    'inventory' => 'fa-pills',
+                                    'equipment' => 'fa-tools',
+                                    'insurance' => 'fa-shield-alt',
+                                    'blood' => 'fa-tint'
+                                ];
+                                echo '<i class="fas ' . ($icons[$alert['monitoring_category']] ?? 'fa-exclamation-triangle') . '"></i>';
+                                ?>
+                            </div>
+                            <div class="alert-content">
+                                <h4><?php echo ucfirst($alert['monitoring_category']); ?> Alert</h4>
+                                <p><?php echo htmlspecialchars($alert['alert_message']); ?></p>
+                                <small><?php echo date('M d, Y H:i', strtotime($alert['alert_date'] . ' ' . $alert['alert_time'])); ?></small>
+                            </div>
+                            <div class="alert-actions">
+                                <button class="btn btn-sm btn-success resolve-alert" data-id="<?php echo $alert['id']; ?>">
+                                    <i class="fas fa-check"></i> Resolve
+                                </button>
+                            </div>
+                        </div>
+                        <?php endforeach; 
+                        else: ?>
+                        <div class="no-alerts">
+                            <i class="fas fa-check-circle"></i>
+                            <p>No active alerts. System is running smoothly!</p>
+                        </div>
+                        <?php endif; ?>
+                    </div>
+                </div>
+                <?php endif; ?>
+
+                <div class="stats-grid">
                 <?php elseif ($user_role === 'doctor'): ?>
                     <div class="stat-card">
                         <h3><?php echo number_format($stats['my_patients'] ?? 0); ?></h3>
@@ -928,9 +1073,252 @@ try {
             color: var(--primary-color);
         }
 
+        /* Blood Bank Inventory Styles */
+        .dashboard-section {
+            margin: 2rem 0;
+            background: var(--card-bg);
+            padding: 1.5rem;
+            border-radius: var(--border-radius);
+            box-shadow: var(--shadow);
+        }
+
+        .dashboard-section h2 {
+            color: var(--text-color);
+            margin-bottom: 1rem;
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+
+        .blood-inventory-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            gap: 1rem;
+            margin-bottom: 1.5rem;
+        }
+
+        .blood-group-card {
+            background: linear-gradient(135deg, #ff6b6b 0%, #ee5a52 100%);
+            color: white;
+            padding: 1.5rem;
+            border-radius: var(--border-radius);
+            box-shadow: 0 4px 15px rgba(255, 107, 107, 0.3);
+            transition: all 0.3s ease;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .blood-group-card:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 8px 25px rgba(255, 107, 107, 0.4);
+        }
+
+        .blood-group-card.warning {
+            background: linear-gradient(135deg, #ffa726 0%, #ff9800 100%);
+            box-shadow: 0 4px 15px rgba(255, 152, 0, 0.3);
+        }
+
+        .blood-group-card.warning:hover {
+            box-shadow: 0 8px 25px rgba(255, 152, 0, 0.4);
+        }
+
+        .blood-group-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 1rem;
+        }
+
+        .blood-group-header h3 {
+            font-size: 1.8rem;
+            font-weight: bold;
+            margin: 0;
+        }
+
+        .blood-drop {
+            font-size: 1.5rem;
+            opacity: 0.8;
+        }
+
+        .blood-stats {
+            display: flex;
+            justify-content: space-between;
+            margin-bottom: 1rem;
+        }
+
+        .stat-item {
+            text-align: center;
+        }
+
+        .stat-item.warning {
+            color: #fff3cd;
+        }
+
+        .stat-value {
+            display: block;
+            font-size: 1.5rem;
+            font-weight: bold;
+            line-height: 1;
+        }
+
+        .stat-label {
+            font-size: 0.8rem;
+            opacity: 0.9;
+        }
+
+        .blood-expiry {
+            text-align: center;
+            opacity: 0.9;
+        }
+
+        .blood-actions {
+            display: flex;
+            gap: 1rem;
+            flex-wrap: wrap;
+        }
+
+        .blood-actions .btn {
+            flex: 1;
+            min-width: 200px;
+        }
+
+        /* Admin Alerts Styles */
+        .alerts-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 1rem;
+        }
+
+        .alert-card {
+            background: var(--card-bg);
+            border-left: 4px solid var(--primary-color);
+            padding: 1rem;
+            border-radius: var(--border-radius);
+            display: flex;
+            align-items: center;
+            gap: 1rem;
+            transition: all 0.3s ease;
+        }
+
+        .alert-card:hover {
+            transform: translateX(5px);
+            box-shadow: var(--shadow);
+        }
+
+        .alert-card.high {
+            border-left-color: #dc3545;
+            background: rgba(220, 53, 69, 0.1);
+        }
+
+        .alert-card.medium {
+            border-left-color: #ffc107;
+            background: rgba(255, 193, 7, 0.1);
+        }
+
+        .alert-card.low {
+            border-left-color: #28a745;
+            background: rgba(40, 167, 69, 0.1);
+        }
+
+        .alert-icon {
+            font-size: 1.5rem;
+            color: var(--primary-color);
+        }
+
+        .alert-card.high .alert-icon {
+            color: #dc3545;
+        }
+
+        .alert-card.medium .alert-icon {
+            color: #ffc107;
+        }
+
+        .alert-card.low .alert-icon {
+            color: #28a745;
+        }
+
+        .alert-content {
+            flex: 1;
+        }
+
+        .alert-content h4 {
+            margin: 0 0 0.5rem 0;
+            color: var(--text-color);
+            font-size: 1rem;
+        }
+
+        .alert-content p {
+            margin: 0 0 0.5rem 0;
+            color: var(--text-secondary);
+            font-size: 0.9rem;
+        }
+
+        .alert-content small {
+            color: var(--text-muted);
+        }
+
+        .alert-actions .btn {
+            padding: 0.25rem 0.5rem;
+            font-size: 0.8rem;
+        }
+
+        .no-alerts {
+            text-align: center;
+            padding: 2rem;
+            color: var(--text-secondary);
+        }
+
+        .no-alerts i {
+            font-size: 3rem;
+            color: var(--success-color);
+            margin-bottom: 1rem;
+        }
+
+        /* Special stat card styles */
+        .blood-card {
+            background: linear-gradient(135deg, #ff6b6b 0%, #ee5a52 100%);
+            color: white;
+        }
+
+        .donor-card {
+            background: linear-gradient(135deg, #4ecdc4 0%, #44a08d 100%);
+            color: white;
+        }
+
+        .insurance-card {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+        }
+
+        .warning-card {
+            background: linear-gradient(135deg, #ffa726 0%, #ff9800 100%);
+            color: white;
+        }
+
+        .alert-card {
+            background: linear-gradient(135deg, #ff5722 0%, #d32f2f 100%);
+            color: white;
+        }
+
         @media (max-width: 768px) {
             .mobile-menu-toggle {
                 display: block;
+            }
+            
+            .blood-inventory-grid {
+                grid-template-columns: 1fr;
+            }
+            
+            .blood-actions {
+                flex-direction: column;
+            }
+            
+            .blood-actions .btn {
+                min-width: auto;
+            }
+            
+            .alerts-grid {
+                grid-template-columns: 1fr;
             }
         }
     </style>
