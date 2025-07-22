@@ -23,8 +23,7 @@ if ($_POST && isset($_POST['action']) && $_POST['action'] === 'add_patient') {
     try {
         // Validate required fields
         if (empty($_POST['email']) || empty($_POST['password'])) {
-            showErrorPopup("Email and password are required for patient registration!");
-            // Continue processing instead of exit
+            $error_message = "Email and password are required for patient registration!";
         }
         
         // Validate password strength using JavaScript validation pattern

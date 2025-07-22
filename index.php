@@ -1,10 +1,5 @@
 <?php
 session_start();
-
-// Enable error reporting for debugging
-error_reporting(E_ALL);
-ini_set('display_errors', 1);
-
 require_once 'config/database.php';
 
 // Redirect if already logged in
@@ -16,16 +11,12 @@ if (isset($_SESSION['user_id'])) {
 $error_message = '';
 
 if ($_POST) {
-    $email = trim($_POST['email'] ?? '');
+    $email = $_POST['email'] ?? '';
     $password = $_POST['password'] ?? '';
     
     if ($email && $password) {
         try {
             $db = new Database();
-            
-            // Simple query first to check connection
-            $test = $db->query("SELECT 1")->fetch();
-            
             $stmt = $db->query(
                 "SELECT u.*, r.role_name, r.role_display_name 
                  FROM users u 
@@ -37,33 +28,26 @@ if ($_POST) {
             $user = $stmt->fetch();
             
             if ($user && password_verify($password, $user['password_hash'])) {
-                // Clear any existing session data
-                session_regenerate_id(true);
-                
                 $_SESSION['user_id'] = $user['id'];
                 $_SESSION['username'] = $user['username'];
                 $_SESSION['email'] = $user['email'];
                 $_SESSION['role'] = $user['role_name'] ?? 'admin';
                 $_SESSION['role_display'] = $user['role_display_name'] ?? 'Administrator';
-                $_SESSION['login_time'] = time();
                 
-                // Update last login (with error handling)
+                // Update last login
                 try {
                     $db->query("UPDATE users SET last_login = NOW() WHERE id = ?", [$user['id']]);
                 } catch (Exception $e) {
                     // Log error but don't fail login
-                    error_log("Failed to update last login: " . $e->getMessage());
                 }
                 
-                // Redirect with success (no delay)
                 header('Location: dashboard.php');
                 exit;
             } else {
                 $error_message = 'Invalid email or password!';
             }
         } catch (Exception $e) {
-            $error_message = 'Login failed: ' . $e->getMessage();
-            error_log("Login error: " . $e->getMessage());
+            $error_message = 'Login failed. Please try again.';
         }
     } else {
         $error_message = 'Please fill all fields!';
@@ -122,90 +106,67 @@ if ($_POST) {
         
         .form-group label {
             display: block;
-            margin-bottom: 8px;
             color: #333;
             font-weight: 500;
+            margin-bottom: 8px;
         }
         
-        .form-control {
+        .form-group input {
             width: 100%;
             padding: 12px 15px;
-            border: 2px solid #e1e5e9;
+            border: 2px solid #e1e1e1;
             border-radius: 8px;
             font-size: 16px;
-            transition: all 0.3s ease;
-            box-sizing: border-box;
+            transition: border-color 0.3s;
         }
         
-        .form-control:focus {
+        .form-group input:focus {
             outline: none;
             border-color: #004685;
-            box-shadow: 0 0 0 3px rgba(0, 70, 133, 0.1);
         }
         
-        .btn {
+        .login-btn {
             width: 100%;
-            padding: 12px;
-            background: linear-gradient(135deg, #004685 0%, #0066cc 100%);
+            background: #004685;
             color: white;
+            padding: 12px;
             border: none;
             border-radius: 8px;
             font-size: 16px;
-            font-weight: 600;
+            font-weight: 500;
             cursor: pointer;
-            transition: all 0.3s ease;
+            transition: background 0.3s;
         }
         
-        .btn:hover {
-            transform: translateY(-2px);
-            box-shadow: 0 5px 15px rgba(0, 70, 133, 0.3);
+        .login-btn:hover {
+            background: #003366;
         }
         
         .error-message {
             background: #fee;
             color: #c33;
-            padding: 12px;
-            border-radius: 8px;
+            padding: 10px;
+            border-radius: 5px;
             margin-bottom: 20px;
             border: 1px solid #fcc;
-            text-align: center;
         }
         
-        .demo-credentials {
+        .demo-users {
+            margin-top: 30px;
+            padding: 20px;
             background: #f8f9fa;
-            padding: 15px;
             border-radius: 8px;
-            margin-top: 20px;
-            font-size: 14px;
+            font-size: 12px;
         }
         
-        .demo-credentials h4 {
-            margin: 0 0 10px 0;
+        .demo-users h4 {
+            margin-bottom: 10px;
             color: #004685;
         }
         
-        .demo-credentials p {
+        .demo-users p {
             margin: 5px 0;
             color: #666;
-        }
-        
-        .demo-user {
-            cursor: pointer;
-            padding: 8px;
-            border-radius: 5px;
-            transition: all 0.3s ease;
-            border: 1px solid transparent;
-        }
-        
-        .demo-user:hover {
-            background: #e3f2fd;
-            border-color: #2196f3;
-            transform: translateX(5px);
-        }
-        
-        .demo-user:active {
-            background: #bbdefb;
-            transform: scale(0.98);
         }
     </style>
 </head>
@@ -213,164 +174,41 @@ if ($_POST) {
     <div class="login-container">
         <div class="login-card">
             <div class="login-header">
-                <h1><i class="fas fa-hospital"></i> Hospital CRM</h1>
+                <h1><?php echo htmlspecialchars($site_config['site_name'] ?? 'Hospital CRM'); ?></h1>
                 <p>Please sign in to your account</p>
             </div>
             
             <?php if ($error_message): ?>
-                <div class="error-message">
-                    <i class="fas fa-exclamation-triangle"></i>
-                    <?php echo htmlspecialchars($error_message); ?>
-                </div>
+                <div class="error-message"><?php echo htmlspecialchars($error_message); ?></div>
             <?php endif; ?>
             
-            <form method="POST" action="">
+            <form method="POST">
                 <div class="form-group">
-                    <label for="email">
-                        <i class="fas fa-envelope"></i> Email Address
-                    </label>
-                    <input 
-                        type="email" 
-                        id="email" 
-                        name="email" 
-                        class="form-control" 
-                        placeholder="Enter your email"
-                        value="<?php echo htmlspecialchars($_POST['email'] ?? ''); ?>"
-                        required
-                    >
+                    <label for="email">Email Address</label>
+                    <input type="email" id="email" name="email" required 
+                           value="<?php echo htmlspecialchars($_POST['email'] ?? ''); ?>">
                 </div>
                 
                 <div class="form-group">
-                    <label for="password">
-                        <i class="fas fa-lock"></i> Password
-                    </label>
-                    <input 
-                        type="password" 
-                        id="password" 
-                        name="password" 
-                        class="form-control" 
-                        placeholder="Enter your password"
-                        required
-                    >
+                    <label for="password">Password</label>
+                    <input type="password" id="password" name="password" required>
                 </div>
                 
-                <button type="submit" class="btn" id="loginBtn">
-                    <i class="fas fa-sign-in-alt"></i> Sign In
-                </button>
+                <button type="submit" class="login-btn">Sign In</button>
             </form>
             
-            <div class="demo-credentials">
-                <h4><i class="fas fa-info-circle"></i> Quick Login (Click to Login)</h4>
-                <p class="demo-user" data-email="admin@hospital.com" data-password="admin">
-                    <strong>👨‍💼 Admin:</strong> admin@hospital.com / admin
-                </p>
-                <p class="demo-user" data-email="doctor1@hospital.com" data-password="admin">
-                    <strong>👩‍⚕️ Doctor:</strong> doctor1@hospital.com / admin
-                </p>
-                <p class="demo-user" data-email="nurse1@hospital.com" data-password="admin">
-                    <strong>👩‍⚕️ Nurse:</strong> nurse1@hospital.com / admin
-                </p>
-                <p class="demo-user" data-email="patient1@hospital.com" data-password="admin">
-                    <strong>🧑‍🤝‍🧑 Patient:</strong> patient1@hospital.com / admin
-                </p>
+            <div class="demo-users">
+                <h4>🎮 Demo Login Credentials:</h4>
+                <p><strong>👨‍💼 Admin:</strong> admin@hospital.com / admin</p>
+                <p><strong>👩‍⚕️ Doctor:</strong> doctor1@hospital.com / admin</p>
+                <p><strong>🧑‍⚕️ Patient:</strong> patient1@hospital.com / admin</p>
+                <p><strong>👩‍💼 Receptionist:</strong> reception@hospital.com / admin</p>
+                <p><strong>👩‍⚕️ Nurse:</strong> nurse1@hospital.com / admin</p>
                 <small style="color: #666; margin-top: 10px; display: block;">
-                    💡 Click any credential above for instant login
+                    💡 All passwords are: <strong style="color: #d63384;">admin</strong>
                 </small>
             </div>
         </div>
     </div>
-    
-    <script>
-        // Auto-focus on email field
-        document.getElementById('email').focus();
-        
-        // Auto-login functionality
-        const emailField = document.getElementById('email');
-        const passwordField = document.getElementById('password');
-        const form = document.querySelector('form');
-        
-        // Demo credentials for auto-login
-        const demoCredentials = {
-            'admin@hospital.com': 'admin',
-            'doctor1@hospital.com': 'admin',
-            'nurse1@hospital.com': 'admin',
-            'patient1@hospital.com': 'admin'
-        };
-        
-        // Auto-fill and submit when password matches
-        passwordField.addEventListener('input', function() {
-            const email = emailField.value.trim();
-            const password = passwordField.value;
-            
-            // Check if it's a demo credential
-            if (demoCredentials[email] && password === demoCredentials[email]) {
-                // Show loading
-                showLoading();
-                // Auto-submit after short delay for better UX
-                setTimeout(() => {
-                    form.submit();
-                }, 300);
-            }
-        });
-        
-        // Show loading animation
-        function showLoading() {
-            const loginBtn = document.getElementById('loginBtn');
-            loginBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Signing In...';
-            loginBtn.disabled = true;
-        }
-        
-        // Form submit handler
-        form.addEventListener('submit', function(e) {
-            showLoading();
-        });
-        
-        // Auto-fill password when email is selected from demo
-        emailField.addEventListener('change', function() {
-            const email = emailField.value.trim();
-            if (demoCredentials[email]) {
-                passwordField.value = demoCredentials[email];
-                // Focus stays on password field for immediate submission
-                passwordField.focus();
-            }
-        });
-        
-        // Quick login on Enter key
-        passwordField.addEventListener('keypress', function(e) {
-            if (e.key === 'Enter') {
-                form.submit();
-            }
-        });
-        
-        // Instant login on demo user click
-        document.querySelectorAll('.demo-user').forEach(function(userElement) {
-            userElement.addEventListener('click', function() {
-                const email = this.getAttribute('data-email');
-                const password = this.getAttribute('data-password');
-                
-                // Fill form
-                emailField.value = email;
-                passwordField.value = password;
-                
-                // Visual feedback
-                this.style.background = '#c8e6c9';
-                this.innerHTML += ' <i class="fas fa-spinner fa-spin"></i>';
-                
-                // Submit form after short delay
-                setTimeout(() => {
-                    form.submit();
-                }, 500);
-            });
-        });
-        
-        // Clear error message after 5 seconds
-        setTimeout(function() {
-            const errorMsg = document.querySelector('.error-message');
-            if (errorMsg) {
-                errorMsg.style.opacity = '0';
-                setTimeout(() => errorMsg.remove(), 300);
-            }
-        }, 5000);
-    </script>
 </body>
 </html>

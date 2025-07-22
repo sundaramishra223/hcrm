@@ -1,26 +1,10 @@
 <?php
 session_start();
-
-// Enable error reporting for debugging
-error_reporting(E_ALL);
-ini_set('display_errors', 1);
-
 require_once 'config/database.php';
 require_once 'includes/functions.php';
 
-// Check if user is logged in
-if (!isset($_SESSION['user_id']) || !isset($_SESSION['role'])) {
-    // Clear invalid session
-    session_destroy();
+if (!isset($_SESSION['user_id'])) {
     header('Location: index.php');
-    exit;
-}
-
-// Validate session (optional security check)
-if (isset($_SESSION['login_time']) && (time() - $_SESSION['login_time']) > 86400) {
-    // Session expired after 24 hours
-    session_destroy();
-    header('Location: index.php?expired=1');
     exit;
 }
 
@@ -160,72 +144,11 @@ try {
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <?php renderDynamicStyles(); ?>
-    <style>
-        /* Force sidebar to show */
-        .sidebar {
-            display: block !important;
-            position: fixed !important;
-            left: 0 !important;
-            top: 0 !important;
-            width: 250px !important;
-            height: 100vh !important;
-            background: linear-gradient(135deg, #2563eb 0%, #1d4ed8 100%) !important;
-            z-index: 1000 !important;
-            overflow-y: auto !important;
-        }
-        
-        .main-content {
-            margin-left: 250px !important;
-            padding: 20px !important;
-            min-height: 100vh !important;
-        }
-        
-        .sidebar-menu {
-            list-style: none !important;
-            padding: 0 !important;
-            margin: 0 !important;
-        }
-        
-        .sidebar-menu a {
-            display: block !important;
-            padding: 15px 20px !important;
-            color: white !important;
-            text-decoration: none !important;
-            transition: all 0.3s ease !important;
-        }
-        
-        .sidebar-menu a:hover {
-            background: rgba(255,255,255,0.1) !important;
-            padding-left: 30px !important;
-        }
-        
-        .sidebar-header {
-            padding: 20px !important;
-            border-bottom: 1px solid rgba(255,255,255,0.2) !important;
-            color: white !important;
-        }
-        
-        /* Mobile responsive */
-        @media (max-width: 768px) {
-            .sidebar {
-                transform: translateX(-100%) !important;
-                transition: transform 0.3s ease !important;
-            }
-            
-            .sidebar.show {
-                transform: translateX(0) !important;
-            }
-            
-            .main-content {
-                margin-left: 0 !important;
-            }
-        }
-    </style>
 </head>
 <body>
     <div class="dashboard-container">
         <!-- Sidebar -->
-        <aside class="sidebar show" id="sidebar" style="display: block !important; position: relative !important;">
+        <aside class="sidebar" id="sidebar">
             <div class="sidebar-header">
                 <h2><i class="fas fa-hospital"></i> Hospital CRM</h2>
                 <p><?php echo htmlspecialchars($_SESSION['role_display']); ?></p>
@@ -234,15 +157,15 @@ try {
                 <li><a href="dashboard.php" class="active"><i class="fas fa-home"></i> Dashboard</a></li>
                 
                 <?php if (in_array($user_role, ['admin', 'receptionist'])): ?>
-                    <li><a href="simple-patients.php"><i class="fas fa-users"></i> Patients</a></li>
+                    <li><a href="patients.php"><i class="fas fa-users"></i> Patients</a></li>
                 <?php endif; ?>
                 
                 <?php if (in_array($user_role, ['admin', 'doctor', 'intern_doctor'])): ?>
-                    <li><a href="simple-doctors.php"><i class="fas fa-user-md"></i> Doctors</a></li>
+                    <li><a href="doctors.php"><i class="fas fa-user-md"></i> Doctors</a></li>
                 <?php endif; ?>
                 
                 <?php if (in_array($user_role, ['admin', 'doctor', 'receptionist', 'intern_doctor'])): ?>
-                    <li><a href="simple-appointments.php"><i class="fas fa-calendar-alt"></i> Appointments</a></li>
+                    <li><a href="appointments.php"><i class="fas fa-calendar-alt"></i> Appointments</a></li>
                 <?php endif; ?>
                 
                 <?php if (in_array($user_role, ['admin', 'receptionist', 'pharmacy_staff', 'intern_pharmacy'])): ?>
@@ -329,11 +252,6 @@ try {
                 <?php endif; ?>
             </ul>
         </aside>
-
-        <!-- Mobile Menu Toggle -->
-        <div class="mobile-menu-toggle" onclick="toggleSidebar()" style="display: none; position: fixed; top: 20px; left: 20px; z-index: 1001; background: #2563eb; color: white; border: none; padding: 10px; border-radius: 5px; cursor: pointer;">
-            <i class="fas fa-bars"></i>
-        </div>
 
         <!-- Main Content -->
         <main class="main-content">
@@ -1429,35 +1347,10 @@ try {
             });
         }
         
-        // Mobile Sidebar Toggle
-        function toggleSidebar() {
-            const sidebar = document.getElementById('sidebar');
-            const mobileToggle = document.querySelector('.mobile-menu-toggle');
-            
-            if (sidebar) {
-                sidebar.classList.toggle('show');
-            }
-        }
-        
         // Initialize theme
         document.addEventListener('DOMContentLoaded', function() {
             const savedTheme = localStorage.getItem('theme') || 'light';
             setTheme(savedTheme);
-            
-            // Show mobile toggle on small screens
-            function checkScreenSize() {
-                const mobileToggle = document.querySelector('.mobile-menu-toggle');
-                if (mobileToggle) {
-                    if (window.innerWidth <= 768) {
-                        mobileToggle.style.display = 'block';
-                    } else {
-                        mobileToggle.style.display = 'none';
-                    }
-                }
-            }
-            
-            checkScreenSize();
-            window.addEventListener('resize', checkScreenSize);
         });
     </script>
 </body>
