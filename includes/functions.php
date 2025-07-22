@@ -9,7 +9,8 @@ function showErrorPopup($message) {
         alert('Error: " . addslashes($message) . "');
         window.history.back();
     </script>";
-    exit;
+    // Remove exit() to prevent blank pages
+    return false;
 }
 
 /**
@@ -20,7 +21,8 @@ function showSuccessPopup($message, $redirect = null) {
         alert('Success: " . addslashes($message) . "');
         " . ($redirect ? "window.location.href = '$redirect';" : "window.history.back();") . "
     </script>";
-    exit;
+    // Remove exit() to prevent blank pages
+    return true;
 }
 
 /**

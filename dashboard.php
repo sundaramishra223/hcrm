@@ -218,7 +218,7 @@ try {
                 <li><a href="dashboard.php" class="active"><i class="fas fa-home"></i> Dashboard</a></li>
                 
                 <?php if (in_array($user_role, ['admin', 'receptionist'])): ?>
-                    <li><a href="patients.php"><i class="fas fa-users"></i> Patients</a></li>
+                    <li><a href="simple-patients.php"><i class="fas fa-users"></i> Patients</a></li>
                 <?php endif; ?>
                 
                 <?php if (in_array($user_role, ['admin', 'doctor', 'intern_doctor'])): ?>

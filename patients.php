@@ -24,7 +24,7 @@ if ($_POST && isset($_POST['action']) && $_POST['action'] === 'add_patient') {
         // Validate required fields
         if (empty($_POST['email']) || empty($_POST['password'])) {
             showErrorPopup("Email and password are required for patient registration!");
-            exit;
+            // Continue processing instead of exit
         }
         
         // Validate password strength using JavaScript validation pattern
@@ -35,20 +35,20 @@ if ($_POST && isset($_POST['action']) && $_POST['action'] === 'add_patient') {
             !preg_match('/[0-9]/', $password) || 
             !preg_match('/[!@#$%^&*()_+\-=\[\]{};\':"\\|,.<>\/?]/', $password)) {
             showErrorPopup("Password must be at least 8 characters with uppercase, lowercase, number, and special character!");
-            exit;
+            // Continue processing instead of exit
         }
         
         // Validate password confirmation
         if ($password !== $_POST['confirm_password']) {
             showErrorPopup("Password confirmation does not match!");
-            exit;
+            // Continue processing instead of exit
         }
         
         // Check if email already exists
         $existing_user = $db->query("SELECT id FROM users WHERE email = ?", [$_POST['email']])->fetch();
         if ($existing_user) {
             showErrorPopup("Email already exists! Please use a different email address.");
-            exit;
+            // Continue processing instead of exit
         }
         
         // Start transaction
