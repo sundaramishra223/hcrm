@@ -115,6 +115,7 @@ try {
                 
                 <?php if (in_array($user_role, ['admin', 'receptionist'])): ?>
                     <li><a href="billing.php"><i class="fas fa-file-invoice-dollar"></i> Billing</a></li>
+                    <li><a href="insurance.php"><i class="fas fa-shield-alt"></i> Insurance</a></li>
                 <?php endif; ?>
                 
                 <?php if (in_array($user_role, ['admin'])): ?>
@@ -207,6 +208,11 @@ try {
                         <i class="fas fa-file-invoice-dollar"></i>
                         <h4>Generate Bill</h4>
                         <p>Create new bill</p>
+                    </a>
+                    <a href="insurance.php" class="quick-action">
+                        <i class="fas fa-shield-alt"></i>
+                        <h4>Insurance Claims</h4>
+                        <p>Manage insurance</p>
                     </a>
                 <?php endif; ?>
             </div>
