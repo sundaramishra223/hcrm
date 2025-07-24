@@ -1,267 +1,261 @@
 <?php
+/**
+ * Image Upload Handler Class
+ * Handles file uploads, validation, and management
+ */
 class ImageUploadHandler {
-    
-    private $base_upload_dir = 'uploads/';
-    private $max_file_size = 5 * 1024 * 1024; // 5MB
-    private $allowed_types = [
-        'image' => ['jpg', 'jpeg', 'png', 'gif'],
-        'document' => ['pdf', 'doc', 'docx'],
-        'all' => ['jpg', 'jpeg', 'png', 'gif', 'pdf', 'doc', 'docx']
-    ];
-    
-    public function __construct() {
-        $this->createDirectories();
-        $this->createSecurityFiles();
-    }
+    private static $uploadDir = 'uploads/';
+    private static $allowedTypes = ['jpg', 'jpeg', 'png', 'gif', 'pdf', 'doc', 'docx'];
+    private static $maxFileSize = 5242880; // 5MB
     
     /**
-     * Create upload directories if they don't exist
+     * Upload file to specific directory
      */
-    private function createDirectories() {
-        $directories = [
-            'uploads',
-            'uploads/patients',
-            'uploads/doctors',
-            'uploads/staff',
-            'uploads/reports',
-            'uploads/prescriptions',
-            'uploads/lab-reports',
-            'uploads/equipment',
-            'uploads/hospital',
-            'uploads/temp'
-        ];
-        
-        foreach ($directories as $dir) {
-            if (!file_exists($dir)) {
-                mkdir($dir, 0755, true);
-            }
-        }
-    }
-    
-    /**
-     * Create security files for uploads directory
-     */
-    private function createSecurityFiles() {
-        // Create .htaccess file
-        $htaccess_content = '# Prevent PHP execution in uploads
-<Files "*.php">
-    Order Deny,Allow
-    Deny from all
-</Files>
-
-# Allow only specific file types
-<FilesMatch "\.(jpg|jpeg|png|gif|pdf|doc|docx)$">
-    Order Allow,Deny
-    Allow from all
-</FilesMatch>
-
-# Prevent directory browsing
-Options -Indexes';
-        
-        file_put_contents($this->base_upload_dir . '.htaccess', $htaccess_content);
-        
-        // Create index.php in each directory
-        $index_content = '<?php
-// Prevent directory browsing
-header("HTTP/1.0 403 Forbidden");
-exit("Access denied");
-?>';
-        
-        $directories = ['patients', 'doctors', 'staff', 'reports', 'prescriptions', 'lab-reports', 'equipment', 'hospital', 'temp'];
-        foreach ($directories as $dir) {
-            file_put_contents($this->base_upload_dir . $dir . '/index.php', $index_content);
-        }
-    }
-    
-    /**
-     * Upload file to specified directory
-     */
-    public function uploadFile($file, $directory, $file_type = 'image', $custom_name = null) {
+    public static function uploadFile($file, $directory, $customName = null) {
         try {
-            // Validate file
-            $validation = $this->validateFile($file, $file_type);
-            if (!$validation['valid']) {
-                return ['success' => false, 'message' => $validation['message']];
-            }
+            // Create directory if it doesn't exist
+            self::createDirectory($directory);
             
-            // Get file extension
-            $file_extension = strtolower(pathinfo($file['name'], PATHINFO_EXTENSION));
+            // Validate file
+            $validation = self::validateFile($file);
+            if (!$validation['success']) {
+                return $validation;
+            }
             
             // Generate filename
-            if ($custom_name) {
-                $filename = $this->sanitizeFilename($custom_name) . '.' . $file_extension;
-            } else {
-                $filename = uniqid() . '_' . time() . '.' . $file_extension;
-            }
-            
-            // Create full path
-            $upload_dir = $this->base_upload_dir . $directory . '/';
-            $filepath = $upload_dir . $filename;
+            $extension = strtolower(pathinfo($file['name'], PATHINFO_EXTENSION));
+            $filename = $customName ? $customName . '.' . $extension : self::generateUniqueFilename($file['name']);
+            $filepath = self::$uploadDir . $directory . '/' . $filename;
             
             // Move uploaded file
             if (move_uploaded_file($file['tmp_name'], $filepath)) {
-                // If it's an image, create thumbnail
-                if ($file_type === 'image') {
-                    $this->createThumbnail($filepath, $upload_dir . 'thumb_' . $filename);
+                // Create thumbnail for images
+                if (in_array($extension, ['jpg', 'jpeg', 'png', 'gif'])) {
+                    self::createThumbnail($filepath, $directory);
                 }
                 
                 return [
                     'success' => true,
+                    'message' => 'File uploaded successfully',
                     'filename' => $filename,
-                    'path' => $filepath,
-                    'url' => $filepath,
-                    'thumbnail' => $file_type === 'image' ? $upload_dir . 'thumb_' . $filename : null
+                    'filepath' => $filepath,
+                    'url' => self::getFileUrl($filename, $directory)
+                ];
+            } else {
+                return [
+                    'success' => false,
+                    'message' => 'Failed to move uploaded file'
                 ];
             }
-            
-            return ['success' => false, 'message' => 'Failed to move uploaded file'];
-            
         } catch (Exception $e) {
-            return ['success' => false, 'message' => 'Upload error: ' . $e->getMessage()];
+            return [
+                'success' => false,
+                'message' => 'Upload error: ' . $e->getMessage()
+            ];
         }
     }
     
     /**
      * Validate uploaded file
      */
-    private function validateFile($file, $file_type) {
-        // Check if file was uploaded
-        if (!isset($file['tmp_name']) || empty($file['tmp_name'])) {
-            return ['valid' => false, 'message' => 'No file uploaded'];
-        }
-        
+    private static function validateFile($file) {
         // Check for upload errors
         if ($file['error'] !== UPLOAD_ERR_OK) {
-            return ['valid' => false, 'message' => 'Upload error: ' . $this->getUploadErrorMessage($file['error'])];
+            return [
+                'success' => false,
+                'message' => 'File upload error: ' . self::getUploadErrorMessage($file['error'])
+            ];
         }
         
         // Check file size
-        if ($file['size'] > $this->max_file_size) {
-            return ['valid' => false, 'message' => 'File too large. Maximum size: ' . ($this->max_file_size / 1024 / 1024) . 'MB'];
+        if ($file['size'] > self::$maxFileSize) {
+            return [
+                'success' => false,
+                'message' => 'File size exceeds maximum limit of ' . (self::$maxFileSize / 1048576) . 'MB'
+            ];
         }
         
-        // Check file extension
-        $file_extension = strtolower(pathinfo($file['name'], PATHINFO_EXTENSION));
-        if (!in_array($file_extension, $this->allowed_types[$file_type])) {
-            return ['valid' => false, 'message' => 'Invalid file type. Allowed: ' . implode(', ', $this->allowed_types[$file_type])];
+        // Check file type
+        $extension = strtolower(pathinfo($file['name'], PATHINFO_EXTENSION));
+        if (!in_array($extension, self::$allowedTypes)) {
+            return [
+                'success' => false,
+                'message' => 'File type not allowed. Allowed types: ' . implode(', ', self::$allowedTypes)
+            ];
         }
         
-        // Check MIME type for images
-        if ($file_type === 'image') {
-            $allowed_mime = ['image/jpeg', 'image/png', 'image/gif'];
-            $file_mime = mime_content_type($file['tmp_name']);
-            if (!in_array($file_mime, $allowed_mime)) {
-                return ['valid' => false, 'message' => 'Invalid image file'];
+        // Check if file is actually an image (for image files)
+        if (in_array($extension, ['jpg', 'jpeg', 'png', 'gif'])) {
+            $imageInfo = getimagesize($file['tmp_name']);
+            if ($imageInfo === false) {
+                return [
+                    'success' => false,
+                    'message' => 'Invalid image file'
+                ];
             }
         }
         
-        return ['valid' => true, 'message' => 'File is valid'];
+        return ['success' => true];
+    }
+    
+    /**
+     * Create directory with security files
+     */
+    private static function createDirectory($directory) {
+        $fullPath = self::$uploadDir . $directory;
+        
+        if (!is_dir($fullPath)) {
+            mkdir($fullPath, 0755, true);
+            
+            // Create .htaccess file for security
+            $htaccessContent = "Options -Indexes\n";
+            $htaccessContent .= "Options -ExecCGI\n";
+            $htaccessContent .= "AddHandler cgi-script .php .pl .py .jsp .asp .sh .cgi\n";
+            file_put_contents($fullPath . '/.htaccess', $htaccessContent);
+            
+            // Create index.php file to prevent directory listing
+            $indexContent = "<?php\n// Directory access denied\nheader('HTTP/1.0 403 Forbidden');\nexit('Access denied');\n?>";
+            file_put_contents($fullPath . '/index.php', $indexContent);
+        }
+    }
+    
+    /**
+     * Generate unique filename
+     */
+    private static function generateUniqueFilename($originalName) {
+        $extension = strtolower(pathinfo($originalName, PATHINFO_EXTENSION));
+        $basename = pathinfo($originalName, PATHINFO_FILENAME);
+        $basename = preg_replace('/[^a-zA-Z0-9_-]/', '', $basename);
+        return $basename . '_' . uniqid() . '.' . $extension;
     }
     
     /**
      * Create thumbnail for images
      */
-    private function createThumbnail($source_path, $thumbnail_path, $max_width = 150, $max_height = 150) {
+    private static function createThumbnail($filepath, $directory) {
         try {
-            // Get image info
-            $image_info = getimagesize($source_path);
-            if (!$image_info) return false;
+            $thumbnailDir = self::$uploadDir . $directory . '/thumbnails/';
+            if (!is_dir($thumbnailDir)) {
+                mkdir($thumbnailDir, 0755, true);
+            }
             
-            $source_width = $image_info[0];
-            $source_height = $image_info[1];
-            $mime_type = $image_info['mime'];
+            $filename = basename($filepath);
+            $thumbnailPath = $thumbnailDir . $filename;
+            
+            // Get image info
+            $imageInfo = getimagesize($filepath);
+            if ($imageInfo === false) return false;
+            
+            $width = $imageInfo[0];
+            $height = $imageInfo[1];
+            $type = $imageInfo[2];
             
             // Calculate thumbnail dimensions
-            $ratio = min($max_width / $source_width, $max_height / $source_height);
-            $thumb_width = intval($source_width * $ratio);
-            $thumb_height = intval($source_height * $ratio);
+            $thumbWidth = 150;
+            $thumbHeight = 150;
             
-            // Create source image resource
-            switch ($mime_type) {
-                case 'image/jpeg':
-                    $source_image = imagecreatefromjpeg($source_path);
+            if ($width > $height) {
+                $thumbHeight = ($height / $width) * $thumbWidth;
+            } else {
+                $thumbWidth = ($width / $height) * $thumbHeight;
+            }
+            
+            // Create image resource
+            switch ($type) {
+                case IMAGETYPE_JPEG:
+                    $source = imagecreatefromjpeg($filepath);
                     break;
-                case 'image/png':
-                    $source_image = imagecreatefrompng($source_path);
+                case IMAGETYPE_PNG:
+                    $source = imagecreatefrompng($filepath);
                     break;
-                case 'image/gif':
-                    $source_image = imagecreatefromgif($source_path);
+                case IMAGETYPE_GIF:
+                    $source = imagecreatefromgif($filepath);
                     break;
                 default:
                     return false;
             }
             
-            // Create thumbnail image
-            $thumbnail = imagecreatetruecolor($thumb_width, $thumb_height);
+            // Create thumbnail
+            $thumbnail = imagecreatetruecolor($thumbWidth, $thumbHeight);
             
             // Preserve transparency for PNG and GIF
-            if ($mime_type === 'image/png' || $mime_type === 'image/gif') {
+            if ($type == IMAGETYPE_PNG || $type == IMAGETYPE_GIF) {
                 imagealphablending($thumbnail, false);
                 imagesavealpha($thumbnail, true);
                 $transparent = imagecolorallocatealpha($thumbnail, 255, 255, 255, 127);
-                imagefilledrectangle($thumbnail, 0, 0, $thumb_width, $thumb_height, $transparent);
+                imagefilledrectangle($thumbnail, 0, 0, $thumbWidth, $thumbHeight, $transparent);
             }
             
-            // Copy and resize
-            imagecopyresampled($thumbnail, $source_image, 0, 0, 0, 0, $thumb_width, $thumb_height, $source_width, $source_height);
+            imagecopyresampled($thumbnail, $source, 0, 0, 0, 0, $thumbWidth, $thumbHeight, $width, $height);
             
             // Save thumbnail
-            switch ($mime_type) {
-                case 'image/jpeg':
-                    imagejpeg($thumbnail, $thumbnail_path, 85);
+            switch ($type) {
+                case IMAGETYPE_JPEG:
+                    imagejpeg($thumbnail, $thumbnailPath, 85);
                     break;
-                case 'image/png':
-                    imagepng($thumbnail, $thumbnail_path, 8);
+                case IMAGETYPE_PNG:
+                    imagepng($thumbnail, $thumbnailPath);
                     break;
-                case 'image/gif':
-                    imagegif($thumbnail, $thumbnail_path);
+                case IMAGETYPE_GIF:
+                    imagegif($thumbnail, $thumbnailPath);
                     break;
             }
             
-            // Clean up memory
-            imagedestroy($source_image);
+            imagedestroy($source);
             imagedestroy($thumbnail);
             
             return true;
-            
         } catch (Exception $e) {
             return false;
         }
     }
     
     /**
-     * Delete uploaded file and its thumbnail
+     * Get file URL
      */
-    public function deleteFile($filepath) {
-        try {
-            if (file_exists($filepath)) {
-                unlink($filepath);
-                
-                // Delete thumbnail if exists
-                $dir = dirname($filepath);
-                $filename = basename($filepath);
-                $thumbnail_path = $dir . '/thumb_' . $filename;
-                if (file_exists($thumbnail_path)) {
-                    unlink($thumbnail_path);
-                }
-                
-                return true;
-            }
-            return false;
-        } catch (Exception $e) {
-            return false;
+    public static function getFileUrl($filename, $directory) {
+        return self::$uploadDir . $directory . '/' . $filename;
+    }
+    
+    /**
+     * Get thumbnail URL
+     */
+    public static function getThumbnailUrl($filename, $directory) {
+        $thumbnailPath = self::$uploadDir . $directory . '/thumbnails/' . $filename;
+        if (file_exists($thumbnailPath)) {
+            return $thumbnailPath;
         }
+        return self::getFileUrl($filename, $directory);
+    }
+    
+    /**
+     * Delete file
+     */
+    public static function deleteFile($filename, $directory) {
+        $filepath = self::$uploadDir . $directory . '/' . $filename;
+        $thumbnailPath = self::$uploadDir . $directory . '/thumbnails/' . $filename;
+        
+        $success = true;
+        if (file_exists($filepath)) {
+            $success = unlink($filepath);
+        }
+        
+        if (file_exists($thumbnailPath)) {
+            unlink($thumbnailPath);
+        }
+        
+        return $success;
     }
     
     /**
      * Get upload error message
      */
-    private function getUploadErrorMessage($error_code) {
-        switch ($error_code) {
+    private static function getUploadErrorMessage($errorCode) {
+        switch ($errorCode) {
             case UPLOAD_ERR_INI_SIZE:
-                return 'File exceeds upload_max_filesize';
+                return 'File exceeds upload_max_filesize directive';
             case UPLOAD_ERR_FORM_SIZE:
-                return 'File exceeds MAX_FILE_SIZE';
+                return 'File exceeds MAX_FILE_SIZE directive';
             case UPLOAD_ERR_PARTIAL:
                 return 'File was only partially uploaded';
             case UPLOAD_ERR_NO_FILE:
@@ -270,71 +264,52 @@ exit("Access denied");
                 return 'Missing temporary folder';
             case UPLOAD_ERR_CANT_WRITE:
                 return 'Failed to write file to disk';
+            case UPLOAD_ERR_EXTENSION:
+                return 'File upload stopped by extension';
             default:
                 return 'Unknown upload error';
         }
     }
     
     /**
-     * Sanitize filename
+     * Get file info
      */
-    private function sanitizeFilename($filename) {
-        // Remove special characters
-        $filename = preg_replace('/[^A-Za-z0-9_\-]/', '_', $filename);
-        // Remove multiple underscores
-        $filename = preg_replace('/_+/', '_', $filename);
-        // Trim underscores from start and end
-        return trim($filename, '_');
-    }
-    
-    /**
-     * Get file URL for display
-     */
-    public static function getFileUrl($filename, $directory) {
-        if (empty($filename)) {
-            return 'assets/images/default-avatar.png'; // Default image
+    public static function getFileInfo($filename, $directory) {
+        $filepath = self::$uploadDir . $directory . '/' . $filename;
+        
+        if (!file_exists($filepath)) {
+            return null;
         }
-        return "uploads/$directory/$filename";
-    }
-    
-    /**
-     * Get thumbnail URL
-     */
-    public static function getThumbnailUrl($filename, $directory) {
-        if (empty($filename)) {
-            return 'assets/images/default-avatar.png';
-        }
-        $thumbnail_path = "uploads/$directory/thumb_$filename";
-        if (file_exists($thumbnail_path)) {
-            return $thumbnail_path;
-        }
-        return "uploads/$directory/$filename";
+        
+        return [
+            'filename' => $filename,
+            'filepath' => $filepath,
+            'url' => self::getFileUrl($filename, $directory),
+            'size' => filesize($filepath),
+            'modified' => filemtime($filepath),
+            'extension' => strtolower(pathinfo($filename, PATHINFO_EXTENSION))
+        ];
     }
 }
 
 // Helper functions for easy use
 function uploadPatientPhoto($file, $custom_name = null) {
-    $uploader = new ImageUploadHandler();
-    return $uploader->uploadFile($file, 'patients', 'image', $custom_name);
+    return ImageUploadHandler::uploadFile($file, 'patients', $custom_name);
 }
 
 function uploadDoctorPhoto($file, $custom_name = null) {
-    $uploader = new ImageUploadHandler();
-    return $uploader->uploadFile($file, 'doctors', 'image', $custom_name);
+    return ImageUploadHandler::uploadFile($file, 'doctors', $custom_name);
 }
 
 function uploadStaffPhoto($file, $custom_name = null) {
-    $uploader = new ImageUploadHandler();
-    return $uploader->uploadFile($file, 'staff', 'image', $custom_name);
+    return ImageUploadHandler::uploadFile($file, 'staff', $custom_name);
 }
 
 function uploadDocument($file, $directory, $custom_name = null) {
-    $uploader = new ImageUploadHandler();
-    return $uploader->uploadFile($file, $directory, 'document', $custom_name);
+    return ImageUploadHandler::uploadFile($file, $directory, $custom_name);
 }
 
-function deleteUploadedFile($filepath) {
-    $uploader = new ImageUploadHandler();
-    return $uploader->deleteFile($filepath);
+function deleteUploadedFile($filename, $directory) {
+    return ImageUploadHandler::deleteFile($filename, $directory);
 }
 ?>
