@@ -1,8 +1,9 @@
 <?php
 session_start();
 require_once 'config/database.php';
+require_once 'includes/functions.php';
+require_once 'includes/upload-handler.php';
 
-// Check if user is logged in and has permission
 if (!isset($_SESSION['user_id'])) {
     header('Location: index.php');
     exit;
@@ -16,56 +17,165 @@ if (!in_array($user_role, ['admin', 'receptionist'])) {
 
 $db = new Database();
 $message = '';
-$search = $_GET['search'] ?? '';
+$message_type = '';
 
-// Handle form submission for new patient
-if ($_POST && isset($_POST['action']) && $_POST['action'] === 'add_patient') {
-    try {
-        // Generate patient ID
-        $stmt = $db->query("CALL GetNextPatientId(1, @next_id)");
-        $result = $db->query("SELECT @next_id as patient_id")->fetch();
-        $patient_id = $result['patient_id'];
-        
-        // Insert patient
-        $sql = "INSERT INTO patients (hospital_id, patient_id, first_name, middle_name, last_name, phone, emergency_contact, email, address, date_of_birth, gender, blood_group, marital_status, occupation, medical_history, allergies) VALUES (1, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
-        
-        $db->query($sql, [
-            $patient_id,
-            $_POST['first_name'],
-            $_POST['middle_name'],
-            $_POST['last_name'],
-            $_POST['phone'],
-            $_POST['emergency_contact'],
-            $_POST['email'],
-            $_POST['address'],
-            $_POST['date_of_birth'],
-            $_POST['gender'],
-            $_POST['blood_group'],
-            $_POST['marital_status'],
-            $_POST['occupation'],
-            $_POST['medical_history'],
-            $_POST['allergies']
-        ]);
-        
-        $message = "Patient added successfully! ID: " . $patient_id;
-    } catch (Exception $e) {
-        $message = "Error: " . $e->getMessage();
+// Handle form submissions
+if ($_POST) {
+    if (isset($_POST['action'])) {
+        switch ($_POST['action']) {
+            case 'add_patient':
+                try {
+                    // Validate required fields
+                    if (empty($_POST['first_name']) || empty($_POST['last_name']) || empty($_POST['email'])) {
+                        throw new Exception("First name, last name, and email are required!");
+                    }
+                    
+                    // Validate email
+                    if (!validateEmail($_POST['email'])) {
+                        throw new Exception("Please enter a valid email address!");
+                    }
+                    
+                    // Check if email already exists
+                    $existing = $db->query("SELECT id FROM patients WHERE email = ?", [$_POST['email']])->fetch();
+                    if ($existing) {
+                        throw new Exception("Email already exists! Please use a different email.");
+                    }
+                    
+                    // Generate patient ID
+                    $patient_count = $db->query("SELECT COUNT(*) as count FROM patients")->fetch()['count'];
+                    $patient_id = 'PAT' . str_pad($patient_count + 1, 4, '0', STR_PAD_LEFT);
+                    
+                    // Handle photo upload
+                    $photo_filename = null;
+                    if (isset($_FILES['photo']) && $_FILES['photo']['error'] == 0) {
+                        $upload_result = uploadPatientPhoto($_FILES['photo'], $patient_id);
+                        if ($upload_result['success']) {
+                            $photo_filename = $upload_result['filename'];
+                        }
+                    }
+                    
+                    // Insert patient
+                    $db->query(
+                        "INSERT INTO patients (patient_id, first_name, last_name, email, phone, address, date_of_birth, gender, blood_group, emergency_contact_name, emergency_contact_phone, medical_history, allergies, photo, created_by) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                        [
+                            $patient_id,
+                            sanitizeInput($_POST['first_name']),
+                            sanitizeInput($_POST['last_name']),
+                            sanitizeInput($_POST['email']),
+                            sanitizeInput($_POST['phone'] ?? ''),
+                            sanitizeInput($_POST['address'] ?? ''),
+                            $_POST['date_of_birth'] ?: null,
+                            $_POST['gender'] ?? 'male',
+                            $_POST['blood_group'] ?? '',
+                            sanitizeInput($_POST['emergency_contact_name'] ?? ''),
+                            sanitizeInput($_POST['emergency_contact_phone'] ?? ''),
+                            sanitizeInput($_POST['medical_history'] ?? ''),
+                            sanitizeInput($_POST['allergies'] ?? ''),
+                            $photo_filename,
+                            $_SESSION['user_id']
+                        ]
+                    );
+                    
+                    // Create user account if password provided
+                    if (!empty($_POST['password'])) {
+                        $password_hash = password_hash($_POST['password'], PASSWORD_DEFAULT);
+                        $db->query(
+                            "INSERT INTO users (username, email, password_hash, role_id, first_name, last_name) VALUES (?, ?, ?, 4, ?, ?)",
+                            [$_POST['email'], $_POST['email'], $password_hash, $_POST['first_name'], $_POST['last_name']]
+                        );
+                    }
+                    
+                    $message = "Patient added successfully! Patient ID: $patient_id";
+                    $message_type = 'success';
+                    
+                } catch (Exception $e) {
+                    $message = $e->getMessage();
+                    $message_type = 'error';
+                }
+                break;
+                
+            case 'update_patient':
+                try {
+                    $patient_id = $_POST['patient_id'];
+                    
+                    // Validate required fields
+                    if (empty($_POST['first_name']) || empty($_POST['last_name']) || empty($_POST['email'])) {
+                        throw new Exception("First name, last name, and email are required!");
+                    }
+                    
+                    // Handle photo upload
+                    $photo_filename = $_POST['existing_photo'];
+                    if (isset($_FILES['photo']) && $_FILES['photo']['error'] == 0) {
+                        $upload_result = uploadPatientPhoto($_FILES['photo'], $patient_id);
+                        if ($upload_result['success']) {
+                            // Delete old photo
+                            if ($photo_filename) {
+                                deleteUploadedFile("uploads/patients/$photo_filename");
+                            }
+                            $photo_filename = $upload_result['filename'];
+                        }
+                    }
+                    
+                    // Update patient
+                    $db->query(
+                        "UPDATE patients SET first_name = ?, last_name = ?, email = ?, phone = ?, address = ?, date_of_birth = ?, gender = ?, blood_group = ?, emergency_contact_name = ?, emergency_contact_phone = ?, medical_history = ?, allergies = ?, photo = ?, updated_at = NOW() WHERE id = ?",
+                        [
+                            sanitizeInput($_POST['first_name']),
+                            sanitizeInput($_POST['last_name']),
+                            sanitizeInput($_POST['email']),
+                            sanitizeInput($_POST['phone'] ?? ''),
+                            sanitizeInput($_POST['address'] ?? ''),
+                            $_POST['date_of_birth'] ?: null,
+                            $_POST['gender'] ?? 'male',
+                            $_POST['blood_group'] ?? '',
+                            sanitizeInput($_POST['emergency_contact_name'] ?? ''),
+                            sanitizeInput($_POST['emergency_contact_phone'] ?? ''),
+                            sanitizeInput($_POST['medical_history'] ?? ''),
+                            sanitizeInput($_POST['allergies'] ?? ''),
+                            $photo_filename,
+                            $patient_id
+                        ]
+                    );
+                    
+                    $message = "Patient updated successfully!";
+                    $message_type = 'success';
+                    
+                } catch (Exception $e) {
+                    $message = $e->getMessage();
+                    $message_type = 'error';
+                }
+                break;
+        }
     }
 }
 
-// Get patients with search
-$sql = "SELECT p.*, 
-        TIMESTAMPDIFF(YEAR, p.date_of_birth, CURDATE()) as age,
-        (SELECT COUNT(*) FROM appointments WHERE patient_id = p.id) as appointment_count
-        FROM patients p 
-        WHERE p.hospital_id = 1";
+// Get patients list
+$search = $_GET['search'] ?? '';
+$page = max(1, intval($_GET['page'] ?? 1));
+$limit = 20;
+$offset = ($page - 1) * $limit;
 
-if ($search) {
-    $sql .= " AND (p.first_name LIKE ? OR p.last_name LIKE ? OR p.phone LIKE ? OR p.patient_id LIKE ?)";
+$where_clause = "WHERE 1=1";
+$params = [];
+
+if (!empty($search)) {
+    $where_clause .= " AND (first_name LIKE ? OR last_name LIKE ? OR patient_id LIKE ? OR email LIKE ? OR phone LIKE ?)";
     $search_param = "%$search%";
-    $patients = $db->query($sql, [$search_param, $search_param, $search_param, $search_param])->fetchAll();
-} else {
-    $patients = $db->query($sql)->fetchAll();
+    $params = array_fill(0, 5, $search_param);
+}
+
+// Get total count
+$total_patients = $db->query("SELECT COUNT(*) as count FROM patients $where_clause", $params)->fetch()['count'];
+$total_pages = ceil($total_patients / $limit);
+
+// Get patients
+$patients_query = "SELECT * FROM patients $where_clause ORDER BY created_at DESC LIMIT $limit OFFSET $offset";
+$patients = $db->query($patients_query, $params)->fetchAll();
+
+// Get patient for editing if requested
+$edit_patient = null;
+if (isset($_GET['edit'])) {
+    $edit_patient = $db->query("SELECT * FROM patients WHERE id = ?", [$_GET['edit']])->fetch();
 }
 ?>
 <!DOCTYPE html>
@@ -73,470 +183,265 @@ if ($search) {
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Patient Management - Hospital CRM</title>
-    <style>
-        * {
-            margin: 0;
-            padding: 0;
-            box-sizing: border-box;
-        }
-        
-        body {
-            font-family: 'Poppins', sans-serif;
-            background: #f5f7fa;
-        }
-        
-        .container {
-            max-width: 1200px;
-            margin: 0 auto;
-            padding: 20px;
-        }
-        
-        .header {
-            background: white;
-            padding: 20px;
-            border-radius: 10px;
-            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
-            margin-bottom: 20px;
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-        }
-        
-        .header h1 {
-            color: #004685;
-            font-size: 24px;
-        }
-        
-        .btn {
-            padding: 10px 20px;
-            border: none;
-            border-radius: 5px;
-            cursor: pointer;
-            text-decoration: none;
-            display: inline-block;
-            font-size: 14px;
-            transition: background 0.3s;
-        }
-        
-        .btn-primary {
-            background: #004685;
-            color: white;
-        }
-        
-        .btn-primary:hover {
-            background: #003366;
-        }
-        
-        .btn-secondary {
-            background: #6c757d;
-            color: white;
-        }
-        
-        .btn-success {
-            background: #28a745;
-            color: white;
-        }
-        
-        .btn-danger {
-            background: #dc3545;
-            color: white;
-        }
-        
-        .search-section {
-            background: white;
-            padding: 20px;
-            border-radius: 10px;
-            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
-            margin-bottom: 20px;
-        }
-        
-        .search-form {
-            display: flex;
-            gap: 10px;
-            align-items: center;
-        }
-        
-        .search-form input {
-            flex: 1;
-            padding: 10px;
-            border: 2px solid #e1e1e1;
-            border-radius: 5px;
-            font-size: 16px;
-        }
-        
-        .patients-table {
-            background: white;
-            border-radius: 10px;
-            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
-            overflow: hidden;
-        }
-        
-        .table {
-            width: 100%;
-            border-collapse: collapse;
-        }
-        
-        .table th, .table td {
-            padding: 12px;
-            text-align: left;
-            border-bottom: 1px solid #e1e1e1;
-        }
-        
-        .table th {
-            background: #f8f9fa;
-            font-weight: 600;
-            color: #333;
-        }
-        
-        .table tr:hover {
-            background: #f8f9fa;
-        }
-        
-        .modal {
-            display: none;
-            position: fixed;
-            top: 0;
-            left: 0;
-            width: 100%;
-            height: 100%;
-            background: rgba(0,0,0,0.5);
-            z-index: 1000;
-        }
-        
-        .modal-content {
-            background: white;
-            margin: 50px auto;
-            padding: 0;
-            border-radius: 10px;
-            width: 90%;
-            max-width: 600px;
-            max-height: 90vh;
-            overflow-y: auto;
-        }
-        
-        .modal-header {
-            padding: 20px;
-            border-bottom: 1px solid #e1e1e1;
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-        }
-        
-        .modal-header h2 {
-            color: #004685;
-            margin: 0;
-        }
-        
-        .close {
-            background: none;
-            border: none;
-            font-size: 24px;
-            cursor: pointer;
-            color: #666;
-        }
-        
-        .modal-body {
-            padding: 20px;
-        }
-        
-        .form-row {
-            display: grid;
-            grid-template-columns: 1fr 1fr;
-            gap: 15px;
-            margin-bottom: 15px;
-        }
-        
-        .form-group {
-            margin-bottom: 15px;
-        }
-        
-        .form-group label {
-            display: block;
-            margin-bottom: 5px;
-            color: #333;
-            font-weight: 500;
-        }
-        
-        .form-group input, .form-group select, .form-group textarea {
-            width: 100%;
-            padding: 10px;
-            border: 2px solid #e1e1e1;
-            border-radius: 5px;
-            font-size: 16px;
-        }
-        
-        .form-group textarea {
-            height: 80px;
-            resize: vertical;
-        }
-        
-        .alert {
-            padding: 12px;
-            border-radius: 5px;
-            margin-bottom: 20px;
-        }
-        
-        .alert-success {
-            background: #d4edda;
-            color: #155724;
-            border: 1px solid #c3e6cb;
-        }
-        
-        .alert-danger {
-            background: #f8d7da;
-            color: #721c24;
-            border: 1px solid #f5c6cb;
-        }
-        
-        .badge {
-            padding: 4px 8px;
-            border-radius: 12px;
-            font-size: 12px;
-            font-weight: 500;
-        }
-        
-        .badge-primary {
-            background: #004685;
-            color: white;
-        }
-        
-        .badge-success {
-            background: #28a745;
-            color: white;
-        }
-        
-        @media (max-width: 768px) {
-            .form-row {
-                grid-template-columns: 1fr;
-            }
-            
-            .search-form {
-                flex-direction: column;
-            }
-            
-            .header {
-                flex-direction: column;
-                gap: 15px;
-                text-align: center;
-            }
-            
-            .table {
-                font-size: 14px;
-            }
-            
-            .table th, .table td {
-                padding: 8px;
-            }
-        }
-    </style>
+    <title>Patients Management - Hospital CRM</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+    <?php renderDynamicStyles(); ?>
 </head>
 <body>
-    <div class="container">
-        <div class="header">
-            <h1>Patient Management</h1>
-            <div>
-                <a href="dashboard.php" class="btn btn-secondary">← Back to Dashboard</a>
-                <button onclick="openModal()" class="btn btn-primary">+ Add New Patient</button>
+    <div class="dashboard-container">
+        <!-- Sidebar -->
+        <aside class="sidebar">
+            <div class="sidebar-header">
+                <h2><i class="fas fa-hospital"></i> Hospital CRM</h2>
+                <p><?php echo htmlspecialchars($_SESSION['role_display']); ?></p>
             </div>
-        </div>
-        
-        <?php if ($message): ?>
-            <div class="alert <?php echo strpos($message, 'Error') === 0 ? 'alert-danger' : 'alert-success'; ?>">
-                <?php echo htmlspecialchars($message); ?>
+            <ul class="sidebar-menu">
+                <li><a href="dashboard.php"><i class="fas fa-home"></i> Dashboard</a></li>
+                <li><a href="patients.php" class="active"><i class="fas fa-users"></i> Patients</a></li>
+                <li><a href="doctors.php"><i class="fas fa-user-md"></i> Doctors</a></li>
+                <li><a href="appointments.php"><i class="fas fa-calendar-alt"></i> Appointments</a></li>
+                <li><a href="pharmacy.php"><i class="fas fa-pills"></i> Pharmacy</a></li>
+                <li><a href="laboratory.php"><i class="fas fa-flask"></i> Laboratory</a></li>
+                <li><a href="billing.php"><i class="fas fa-file-invoice-dollar"></i> Billing</a></li>
+                <li><a href="logout.php"><i class="fas fa-sign-out-alt"></i> Logout</a></li>
+            </ul>
+        </aside>
+
+        <!-- Main Content -->
+        <main class="main-content">
+            <div class="header">
+                <div>
+                    <h1><i class="fas fa-users"></i> Patients Management</h1>
+                    <p>Manage patient records and information</p>
+                </div>
+                <div>
+                    <a href="dashboard.php" class="btn btn-primary">
+                        <i class="fas fa-arrow-left"></i> Back to Dashboard
+                    </a>
+                </div>
             </div>
-        <?php endif; ?>
-        
-        <div class="search-section">
-            <form method="GET" class="search-form">
-                <input type="text" name="search" placeholder="Search patients by name, phone, or patient ID..." 
-                       value="<?php echo htmlspecialchars($search); ?>">
-                <button type="submit" class="btn btn-primary">Search</button>
-                <?php if ($search): ?>
-                    <a href="patients.php" class="btn btn-secondary">Clear</a>
-                <?php endif; ?>
-            </form>
-        </div>
-        
-        <div class="patients-table">
-            <table class="table">
-                <thead>
-                    <tr>
-                        <th>Patient ID</th>
-                        <th>Name</th>
-                        <th>Phone</th>
-                        <th>Age</th>
-                        <th>Gender</th>
-                        <th>Blood Group</th>
-                        <th>Appointments</th>
-                        <th>Actions</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    <?php if (empty($patients)): ?>
-                        <tr>
-                            <td colspan="8" style="text-align: center; padding: 30px; color: #666;">
-                                <?php echo $search ? 'No patients found matching your search.' : 'No patients registered yet.'; ?>
-                            </td>
-                        </tr>
-                    <?php else: ?>
-                        <?php foreach ($patients as $patient): ?>
-                            <tr>
-                                <td><span class="badge badge-primary"><?php echo htmlspecialchars($patient['patient_id']); ?></span></td>
-                                <td>
-                                    <strong><?php echo htmlspecialchars($patient['first_name'] . ' ' . $patient['last_name']); ?></strong>
-                                    <?php if ($patient['email']): ?>
-                                        <br><small style="color: #666;"><?php echo htmlspecialchars($patient['email']); ?></small>
-                                    <?php endif; ?>
-                                </td>
-                                <td><?php echo htmlspecialchars($patient['phone']); ?></td>
-                                <td><?php echo $patient['age'] ?? 'N/A'; ?></td>
-                                <td><?php echo ucfirst($patient['gender'] ?? 'N/A'); ?></td>
-                                <td><?php echo htmlspecialchars($patient['blood_group'] ?? 'N/A'); ?></td>
-                                <td><span class="badge badge-success"><?php echo $patient['appointment_count']; ?></span></td>
-                                <td>
-                                    <a href="patient-details.php?id=<?php echo $patient['id']; ?>" class="btn btn-primary" style="font-size: 12px; padding: 5px 10px;">View</a>
-                                    <a href="book-appointment.php?patient_id=<?php echo $patient['id']; ?>" class="btn btn-success" style="font-size: 12px; padding: 5px 10px;">Book</a>
-                                </td>
-                            </tr>
-                        <?php endforeach; ?>
+
+            <?php if ($message): ?>
+                <div class="alert alert-<?php echo $message_type; ?>">
+                    <i class="fas fa-<?php echo $message_type == 'success' ? 'check-circle' : 'exclamation-triangle'; ?>"></i>
+                    <?php echo htmlspecialchars($message); ?>
+                </div>
+            <?php endif; ?>
+
+            <!-- Add/Edit Patient Form -->
+            <div class="card">
+                <h3>
+                    <i class="fas fa-<?php echo $edit_patient ? 'edit' : 'user-plus'; ?>"></i> 
+                    <?php echo $edit_patient ? 'Edit Patient' : 'Add New Patient'; ?>
+                </h3>
+                
+                <form method="POST" enctype="multipart/form-data">
+                    <input type="hidden" name="action" value="<?php echo $edit_patient ? 'update_patient' : 'add_patient'; ?>">
+                    <?php if ($edit_patient): ?>
+                        <input type="hidden" name="patient_id" value="<?php echo $edit_patient['id']; ?>">
+                        <input type="hidden" name="existing_photo" value="<?php echo $edit_patient['photo']; ?>">
                     <?php endif; ?>
-                </tbody>
-            </table>
-        </div>
-    </div>
-    
-    <!-- Add Patient Modal -->
-    <div id="patientModal" class="modal">
-        <div class="modal-content">
-            <div class="modal-header">
-                <h2>Add New Patient</h2>
-                <button type="button" class="close" onclick="closeModal()">&times;</button>
-            </div>
-            <div class="modal-body">
-                <form method="POST">
-                    <input type="hidden" name="action" value="add_patient">
                     
-                    <div class="form-row">
+                    <div class="grid grid-3">
                         <div class="form-group">
                             <label for="first_name">First Name *</label>
-                            <input type="text" id="first_name" name="first_name" required>
+                            <input type="text" id="first_name" name="first_name" class="form-control" required
+                                   value="<?php echo htmlspecialchars($edit_patient['first_name'] ?? ''); ?>">
                         </div>
                         <div class="form-group">
                             <label for="last_name">Last Name *</label>
-                            <input type="text" id="last_name" name="last_name" required>
-                        </div>
-                    </div>
-                    
-                    <div class="form-group">
-                        <label for="middle_name">Middle Name</label>
-                        <input type="text" id="middle_name" name="middle_name">
-                    </div>
-                    
-                    <div class="form-row">
-                        <div class="form-group">
-                            <label for="phone">Phone Number *</label>
-                            <input type="tel" id="phone" name="phone" required>
+                            <input type="text" id="last_name" name="last_name" class="form-control" required
+                                   value="<?php echo htmlspecialchars($edit_patient['last_name'] ?? ''); ?>">
                         </div>
                         <div class="form-group">
-                            <label for="emergency_contact">Emergency Contact</label>
-                            <input type="tel" id="emergency_contact" name="emergency_contact">
+                            <label for="email">Email *</label>
+                            <input type="email" id="email" name="email" class="form-control" required
+                                   value="<?php echo htmlspecialchars($edit_patient['email'] ?? ''); ?>">
                         </div>
                     </div>
                     
-                    <div class="form-group">
-                        <label for="email">Email Address</label>
-                        <input type="email" id="email" name="email">
+                    <div class="grid grid-3">
+                        <div class="form-group">
+                            <label for="phone">Phone</label>
+                            <input type="tel" id="phone" name="phone" class="form-control"
+                                   value="<?php echo htmlspecialchars($edit_patient['phone'] ?? ''); ?>">
+                        </div>
+                        <div class="form-group">
+                            <label for="date_of_birth">Date of Birth</label>
+                            <input type="date" id="date_of_birth" name="date_of_birth" class="form-control"
+                                   value="<?php echo $edit_patient['date_of_birth'] ?? ''; ?>">
+                        </div>
+                        <div class="form-group">
+                            <label for="gender">Gender</label>
+                            <select id="gender" name="gender" class="form-control">
+                                <option value="male" <?php echo ($edit_patient['gender'] ?? '') == 'male' ? 'selected' : ''; ?>>Male</option>
+                                <option value="female" <?php echo ($edit_patient['gender'] ?? '') == 'female' ? 'selected' : ''; ?>>Female</option>
+                                <option value="other" <?php echo ($edit_patient['gender'] ?? '') == 'other' ? 'selected' : ''; ?>>Other</option>
+                            </select>
+                        </div>
+                    </div>
+                    
+                    <div class="grid grid-2">
+                        <div class="form-group">
+                            <label for="blood_group">Blood Group</label>
+                            <select id="blood_group" name="blood_group" class="form-control">
+                                <option value="">Select Blood Group</option>
+                                <?php
+                                $blood_groups = ['A+', 'A-', 'B+', 'B-', 'AB+', 'AB-', 'O+', 'O-'];
+                                foreach ($blood_groups as $bg) {
+                                    $selected = ($edit_patient['blood_group'] ?? '') == $bg ? 'selected' : '';
+                                    echo "<option value='$bg' $selected>$bg</option>";
+                                }
+                                ?>
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <label for="photo">Photo</label>
+                            <input type="file" id="photo" name="photo" class="form-control" accept="image/*">
+                            <?php if ($edit_patient && $edit_patient['photo']): ?>
+                                <small class="text-muted">Current photo: <?php echo $edit_patient['photo']; ?></small>
+                            <?php endif; ?>
+                        </div>
                     </div>
                     
                     <div class="form-group">
                         <label for="address">Address</label>
-                        <textarea id="address" name="address"></textarea>
+                        <textarea id="address" name="address" class="form-control" rows="3"><?php echo htmlspecialchars($edit_patient['address'] ?? ''); ?></textarea>
                     </div>
                     
-                    <div class="form-row">
+                    <div class="grid grid-2">
                         <div class="form-group">
-                            <label for="date_of_birth">Date of Birth</label>
-                            <input type="date" id="date_of_birth" name="date_of_birth">
+                            <label for="emergency_contact_name">Emergency Contact Name</label>
+                            <input type="text" id="emergency_contact_name" name="emergency_contact_name" class="form-control"
+                                   value="<?php echo htmlspecialchars($edit_patient['emergency_contact_name'] ?? ''); ?>">
                         </div>
                         <div class="form-group">
-                            <label for="gender">Gender</label>
-                            <select id="gender" name="gender">
-                                <option value="">Select Gender</option>
-                                <option value="male">Male</option>
-                                <option value="female">Female</option>
-                                <option value="other">Other</option>
-                            </select>
+                            <label for="emergency_contact_phone">Emergency Contact Phone</label>
+                            <input type="tel" id="emergency_contact_phone" name="emergency_contact_phone" class="form-control"
+                                   value="<?php echo htmlspecialchars($edit_patient['emergency_contact_phone'] ?? ''); ?>">
                         </div>
                     </div>
                     
-                    <div class="form-row">
+                    <div class="grid grid-2">
                         <div class="form-group">
-                            <label for="blood_group">Blood Group</label>
-                            <select id="blood_group" name="blood_group">
-                                <option value="">Select Blood Group</option>
-                                <option value="A+">A+</option>
-                                <option value="A-">A-</option>
-                                <option value="B+">B+</option>
-                                <option value="B-">B-</option>
-                                <option value="AB+">AB+</option>
-                                <option value="AB-">AB-</option>
-                                <option value="O+">O+</option>
-                                <option value="O-">O-</option>
-                            </select>
+                            <label for="medical_history">Medical History</label>
+                            <textarea id="medical_history" name="medical_history" class="form-control" rows="3"><?php echo htmlspecialchars($edit_patient['medical_history'] ?? ''); ?></textarea>
                         </div>
                         <div class="form-group">
-                            <label for="marital_status">Marital Status</label>
-                            <select id="marital_status" name="marital_status">
-                                <option value="">Select Status</option>
-                                <option value="single">Single</option>
-                                <option value="married">Married</option>
-                                <option value="divorced">Divorced</option>
-                                <option value="widowed">Widowed</option>
-                            </select>
+                            <label for="allergies">Allergies</label>
+                            <textarea id="allergies" name="allergies" class="form-control" rows="3"><?php echo htmlspecialchars($edit_patient['allergies'] ?? ''); ?></textarea>
                         </div>
                     </div>
+                    
+                    <?php if (!$edit_patient): ?>
+                        <div class="form-group">
+                            <label for="password">Login Password (Optional)</label>
+                            <input type="password" id="password" name="password" class="form-control">
+                            <small class="text-muted">Leave empty if you don't want to create a login account for this patient</small>
+                        </div>
+                    <?php endif; ?>
                     
                     <div class="form-group">
-                        <label for="occupation">Occupation</label>
-                        <input type="text" id="occupation" name="occupation">
-                    </div>
-                    
-                    <div class="form-group">
-                        <label for="medical_history">Medical History</label>
-                        <textarea id="medical_history" name="medical_history" placeholder="Previous illnesses, surgeries, chronic conditions..."></textarea>
-                    </div>
-                    
-                    <div class="form-group">
-                        <label for="allergies">Allergies</label>
-                        <textarea id="allergies" name="allergies" placeholder="Drug allergies, food allergies, environmental allergies..."></textarea>
-                    </div>
-                    
-                    <div style="text-align: right; margin-top: 20px;">
-                        <button type="button" onclick="closeModal()" class="btn btn-secondary">Cancel</button>
-                        <button type="submit" class="btn btn-primary">Add Patient</button>
+                        <button type="submit" class="btn btn-success">
+                            <i class="fas fa-<?php echo $edit_patient ? 'save' : 'plus'; ?>"></i> 
+                            <?php echo $edit_patient ? 'Update Patient' : 'Add Patient'; ?>
+                        </button>
+                        <?php if ($edit_patient): ?>
+                            <a href="patients.php" class="btn btn-secondary">
+                                <i class="fas fa-times"></i> Cancel
+                            </a>
+                        <?php endif; ?>
                     </div>
                 </form>
             </div>
-        </div>
+
+            <!-- Patients List -->
+            <div class="card">
+                <div class="d-flex justify-content-between align-items-center mb-3">
+                    <h3><i class="fas fa-list"></i> Patients List (<?php echo number_format($total_patients); ?>)</h3>
+                    
+                    <!-- Search Form -->
+                    <form method="GET" class="d-flex" style="gap: 10px;">
+                        <input type="text" name="search" placeholder="Search patients..." class="form-control" 
+                               value="<?php echo htmlspecialchars($search); ?>" style="width: 300px;">
+                        <button type="submit" class="btn btn-primary">
+                            <i class="fas fa-search"></i>
+                        </button>
+                        <?php if ($search): ?>
+                            <a href="patients.php" class="btn btn-secondary">
+                                <i class="fas fa-times"></i>
+                            </a>
+                        <?php endif; ?>
+                    </form>
+                </div>
+                
+                <?php if (empty($patients)): ?>
+                    <p class="text-muted text-center">No patients found.</p>
+                <?php else: ?>
+                    <div style="overflow-x: auto;">
+                        <table class="table">
+                            <thead>
+                                <tr>
+                                    <th>Photo</th>
+                                    <th>Patient ID</th>
+                                    <th>Name</th>
+                                    <th>Email</th>
+                                    <th>Phone</th>
+                                    <th>Age</th>
+                                    <th>Blood Group</th>
+                                    <th>Actions</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <?php foreach ($patients as $patient): ?>
+                                    <tr>
+                                        <td>
+                                            <?php if ($patient['photo']): ?>
+                                                <img src="<?php echo ImageUploadHandler::getThumbnailUrl($patient['photo'], 'patients'); ?>" 
+                                                     alt="Patient Photo" style="width: 40px; height: 40px; border-radius: 50%; object-fit: cover;">
+                                            <?php else: ?>
+                                                <div style="width: 40px; height: 40px; border-radius: 50%; background: #ccc; display: flex; align-items: center; justify-content: center;">
+                                                    <i class="fas fa-user"></i>
+                                                </div>
+                                            <?php endif; ?>
+                                        </td>
+                                        <td><?php echo htmlspecialchars($patient['patient_id']); ?></td>
+                                        <td><?php echo htmlspecialchars($patient['first_name'] . ' ' . $patient['last_name']); ?></td>
+                                        <td><?php echo htmlspecialchars($patient['email']); ?></td>
+                                        <td><?php echo htmlspecialchars($patient['phone']); ?></td>
+                                        <td><?php echo calculateAge($patient['date_of_birth']); ?> years</td>
+                                        <td><?php echo htmlspecialchars($patient['blood_group']); ?></td>
+                                        <td>
+                                            <a href="patient-details.php?id=<?php echo $patient['id']; ?>" class="btn btn-info" style="padding: 5px 10px; font-size: 12px;">
+                                                <i class="fas fa-eye"></i> View
+                                            </a>
+                                            <a href="patients.php?edit=<?php echo $patient['id']; ?>" class="btn btn-warning" style="padding: 5px 10px; font-size: 12px;">
+                                                <i class="fas fa-edit"></i> Edit
+                                            </a>
+                                        </td>
+                                    </tr>
+                                <?php endforeach; ?>
+                            </tbody>
+                        </table>
+                    </div>
+                    
+                    <!-- Pagination -->
+                    <?php if ($total_pages > 1): ?>
+                        <div class="d-flex justify-content-center mt-3">
+                            <div style="display: flex; gap: 5px;">
+                                <?php for ($i = 1; $i <= $total_pages; $i++): ?>
+                                    <a href="?page=<?php echo $i; ?><?php echo $search ? '&search=' . urlencode($search) : ''; ?>" 
+                                       class="btn <?php echo $i == $page ? 'btn-primary' : 'btn-secondary'; ?>" 
+                                       style="padding: 5px 10px;">
+                                        <?php echo $i; ?>
+                                    </a>
+                                <?php endfor; ?>
+                            </div>
+                        </div>
+                    <?php endif; ?>
+                <?php endif; ?>
+            </div>
+        </main>
     </div>
-    
-    <script>
-        function openModal() {
-            document.getElementById('patientModal').style.display = 'block';
-        }
-        
-        function closeModal() {
-            document.getElementById('patientModal').style.display = 'none';
-        }
-        
-        // Close modal when clicking outside
-        window.onclick = function(event) {
-            const modal = document.getElementById('patientModal');
-            if (event.target === modal) {
-                closeModal();
-            }
-        }
-    </script>
 </body>
 </html>

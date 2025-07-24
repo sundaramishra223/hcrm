@@ -1,792 +1,360 @@
 <?php
 session_start();
 require_once 'config/database.php';
+require_once 'includes/functions.php';
+require_once 'includes/upload-handler.php';
 
-// Check if user is logged in
 if (!isset($_SESSION['user_id'])) {
     header('Location: index.php');
     exit;
 }
 
 $user_role = $_SESSION['role'];
-$patient_id = $_GET['id'] ?? null;
-
-if (!$patient_id) {
-    header('Location: patients.php');
+if (!in_array($user_role, ['admin', 'doctor', 'nurse', 'receptionist'])) {
+    header('Location: dashboard.php');
     exit;
 }
 
 $db = new Database();
 
-// Check permissions and get patient data
-$patient_sql = "SELECT p.*, 
-                TIMESTAMPDIFF(YEAR, p.date_of_birth, CURDATE()) as age,
-                h.name as hospital_name
-                FROM patients p
-                JOIN hospitals h ON p.hospital_id = h.id
-                WHERE p.id = ? AND p.hospital_id = 1";
+// Get patient ID
+$patient_id = $_GET['id'] ?? 0;
 
-$patient = $db->query($patient_sql, [$patient_id])->fetch();
-
-if (!$patient) {
+// Get patient details
+try {
+    $patient = $db->query("SELECT * FROM patients WHERE id = ?", [$patient_id])->fetch();
+    if (!$patient) {
+        header('Location: patients.php');
+        exit;
+    }
+} catch (Exception $e) {
     header('Location: patients.php');
     exit;
 }
 
-// Role-based access control
-if ($user_role === 'patient') {
-    // Patients can only view their own data
-    $user_patient = $db->query("SELECT id FROM patients WHERE user_id = ?", [$_SESSION['user_id']])->fetch();
-    if (!$user_patient || $user_patient['id'] != $patient_id) {
-        header('Location: dashboard.php');
-        exit;
-    }
-} elseif ($user_role === 'doctor') {
-    // Doctors can only view patients they have appointments with
-    $doctor_id = $db->query("SELECT id FROM doctors WHERE user_id = ?", [$_SESSION['user_id']])->fetch()['id'];
-    $has_appointment = $db->query("SELECT COUNT(*) as count FROM appointments WHERE patient_id = ? AND doctor_id = ?", [$patient_id, $doctor_id])->fetch()['count'];
-    if ($has_appointment == 0) {
-        header('Location: dashboard.php');
-        exit;
-    }
-}
+// Get patient's appointments
+$appointments = $db->query(
+    "SELECT a.*, d.doctor_name 
+     FROM appointments a 
+     LEFT JOIN doctors d ON a.doctor_id = d.id 
+     WHERE a.patient_id = ? 
+     ORDER BY a.appointment_date DESC, a.appointment_time DESC 
+     LIMIT 10",
+    [$patient_id]
+)->fetchAll();
 
-// Get recent appointments
-$appointments = $db->query("
-    SELECT a.*, 
-    CONCAT(d.first_name, ' ', d.last_name) as doctor_name,
-    d.specialization
-    FROM appointments a
-    JOIN doctors d ON a.doctor_id = d.id
-    WHERE a.patient_id = ?
-    ORDER BY a.appointment_date DESC, a.appointment_time DESC
-    LIMIT 10
-", [$patient_id])->fetchAll();
+// Get patient's prescriptions
+$prescriptions = $db->query(
+    "SELECT p.*, d.doctor_name 
+     FROM prescriptions p 
+     LEFT JOIN doctors d ON p.doctor_id = d.id 
+     WHERE p.patient_id = ? 
+     ORDER BY p.created_at DESC 
+     LIMIT 5",
+    [$patient_id]
+)->fetchAll();
 
-// Get recent prescriptions
-$prescriptions = $db->query("
-    SELECT p.*,
-    CONCAT(d.first_name, ' ', d.last_name) as doctor_name,
-    (SELECT COUNT(*) FROM prescription_medicines WHERE prescription_id = p.id) as medicine_count
-    FROM prescriptions p
-    JOIN doctors d ON p.doctor_id = d.id
-    WHERE p.patient_id = ?
-    ORDER BY p.created_at DESC
-    LIMIT 5
-", [$patient_id])->fetchAll();
+// Get patient's lab tests
+$lab_tests = $db->query(
+    "SELECT lt.*, d.doctor_name 
+     FROM lab_tests lt 
+     LEFT JOIN doctors d ON lt.doctor_id = d.id 
+     WHERE lt.patient_id = ? 
+     ORDER BY lt.created_at DESC 
+     LIMIT 5",
+    [$patient_id]
+)->fetchAll();
 
-// Get recent vitals
-$vitals = $db->query("
-    SELECT v.*,
-    CONCAT(u.username) as recorded_by_name
-    FROM patient_vitals v
-    JOIN users u ON v.recorded_by = u.id
-    WHERE v.patient_id = ?
-    ORDER BY v.recorded_at DESC
-    LIMIT 5
-", [$patient_id])->fetchAll();
-
-// Get bills
-$bills = $db->query("
-    SELECT * FROM bills
-    WHERE patient_id = ?
-    ORDER BY bill_date DESC
-    LIMIT 10
-", [$patient_id])->fetchAll();
-
-// Get lab orders
-$lab_orders = $db->query("
-    SELECT lo.*,
-    CONCAT(d.first_name, ' ', d.last_name) as doctor_name,
-    (SELECT COUNT(*) FROM lab_order_tests WHERE lab_order_id = lo.id) as test_count
-    FROM lab_orders lo
-    JOIN doctors d ON lo.doctor_id = d.id
-    WHERE lo.patient_id = ?
-    ORDER BY lo.order_date DESC
-    LIMIT 5
-", [$patient_id])->fetchAll();
+// Get patient's bills
+$bills = $db->query(
+    "SELECT * FROM billing 
+     WHERE patient_id = ? 
+     ORDER BY created_at DESC 
+     LIMIT 5",
+    [$patient_id]
+)->fetchAll();
 ?>
 <!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Patient Details - <?php echo htmlspecialchars($patient['first_name'] . ' ' . $patient['last_name']); ?></title>
-    <style>
-        * {
-            margin: 0;
-            padding: 0;
-            box-sizing: border-box;
-        }
-        
-        body {
-            font-family: 'Poppins', sans-serif;
-            background: #f5f7fa;
-        }
-        
-        .container {
-            max-width: 1200px;
-            margin: 0 auto;
-            padding: 20px;
-        }
-        
-        .header {
-            background: white;
-            padding: 20px;
-            border-radius: 10px;
-            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
-            margin-bottom: 20px;
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-        }
-        
-        .header h1 {
-            color: #004685;
-            font-size: 24px;
-        }
-        
-        .btn {
-            padding: 10px 20px;
-            border: none;
-            border-radius: 5px;
-            cursor: pointer;
-            text-decoration: none;
-            display: inline-block;
-            font-size: 14px;
-            transition: background 0.3s;
-        }
-        
-        .btn-primary {
-            background: #004685;
-            color: white;
-        }
-        
-        .btn-secondary {
-            background: #6c757d;
-            color: white;
-        }
-        
-        .btn-success {
-            background: #28a745;
-            color: white;
-        }
-        
-        .patient-overview {
-            display: grid;
-            grid-template-columns: 1fr 2fr;
-            gap: 20px;
-            margin-bottom: 20px;
-        }
-        
-        .patient-card {
-            background: white;
-            padding: 25px;
-            border-radius: 10px;
-            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
-            text-align: center;
-        }
-        
-        .patient-avatar {
-            width: 100px;
-            height: 100px;
-            border-radius: 50%;
-            background: linear-gradient(135deg, #004685, #0066cc);
-            color: white;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            font-size: 36px;
-            font-weight: 600;
-            margin: 0 auto 20px;
-        }
-        
-        .patient-name {
-            font-size: 22px;
-            font-weight: 600;
-            color: #333;
-            margin-bottom: 5px;
-        }
-        
-        .patient-id {
-            color: #666;
-            margin-bottom: 20px;
-        }
-        
-        .patient-info {
-            background: white;
-            padding: 25px;
-            border-radius: 10px;
-            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
-        }
-        
-        .info-grid {
-            display: grid;
-            grid-template-columns: 1fr 1fr;
-            gap: 15px;
-        }
-        
-        .info-item {
-            display: flex;
-            flex-direction: column;
-        }
-        
-        .info-item label {
-            font-size: 12px;
-            color: #666;
-            margin-bottom: 5px;
-            font-weight: 500;
-        }
-        
-        .info-item span {
-            font-weight: 500;
-            color: #333;
-        }
-        
-        .tabs {
-            background: white;
-            border-radius: 10px;
-            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
-            overflow: hidden;
-        }
-        
-        .tab-buttons {
-            display: flex;
-            background: #f8f9fa;
-            border-bottom: 1px solid #e1e1e1;
-        }
-        
-        .tab-button {
-            padding: 15px 20px;
-            background: none;
-            border: none;
-            cursor: pointer;
-            font-size: 14px;
-            font-weight: 500;
-            color: #666;
-            transition: all 0.3s;
-            flex: 1;
-            text-align: center;
-        }
-        
-        .tab-button.active {
-            background: white;
-            color: #004685;
-            border-bottom: 2px solid #004685;
-        }
-        
-        .tab-content {
-            padding: 25px;
-            display: none;
-        }
-        
-        .tab-content.active {
-            display: block;
-        }
-        
-        .records-list {
-            list-style: none;
-        }
-        
-        .record-item {
-            padding: 15px;
-            border-bottom: 1px solid #e1e1e1;
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-        }
-        
-        .record-item:last-child {
-            border-bottom: none;
-        }
-        
-        .record-main {
-            flex: 1;
-        }
-        
-        .record-title {
-            font-weight: 600;
-            color: #333;
-            margin-bottom: 5px;
-        }
-        
-        .record-details {
-            font-size: 14px;
-            color: #666;
-        }
-        
-        .record-date {
-            font-size: 12px;
-            color: #999;
-            font-weight: 500;
-        }
-        
-        .badge {
-            padding: 4px 8px;
-            border-radius: 12px;
-            font-size: 11px;
-            font-weight: 500;
-            text-transform: uppercase;
-        }
-        
-        .badge-scheduled {
-            background: #e3f2fd;
-            color: #1976d2;
-        }
-        
-        .badge-completed {
-            background: #f3e5f5;
-            color: #7b1fa2;
-        }
-        
-        .badge-active {
-            background: #d4edda;
-            color: #155724;
-        }
-        
-        .badge-paid {
-            background: #d4edda;
-            color: #155724;
-        }
-        
-        .badge-pending {
-            background: #fff3cd;
-            color: #856404;
-        }
-        
-        .vitals-grid {
-            display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
-            gap: 15px;
-            margin-bottom: 20px;
-        }
-        
-        .vital-card {
-            background: #f8f9fa;
-            padding: 15px;
-            border-radius: 8px;
-            text-align: center;
-        }
-        
-        .vital-value {
-            font-size: 20px;
-            font-weight: 600;
-            color: #004685;
-        }
-        
-        .vital-label {
-            font-size: 12px;
-            color: #666;
-            margin-top: 5px;
-        }
-        
-        .empty-state {
-            text-align: center;
-            padding: 40px;
-            color: #666;
-        }
-        
-        .empty-state h3 {
-            margin-bottom: 10px;
-        }
-        
-        @media (max-width: 768px) {
-            .patient-overview {
-                grid-template-columns: 1fr;
-            }
-            
-            .info-grid {
-                grid-template-columns: 1fr;
-            }
-            
-            .tab-buttons {
-                flex-direction: column;
-            }
-            
-            .vitals-grid {
-                grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
-            }
-            
-            .header {
-                flex-direction: column;
-                gap: 15px;
-                text-align: center;
-            }
-        }
-    </style>
+    <title>Patient Details - Hospital CRM</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+    <?php renderDynamicStyles(); ?>
 </head>
 <body>
-    <div class="container">
-        <div class="header">
-            <h1>Patient Details</h1>
-            <div>
-                <a href="<?php echo $user_role === 'patient' ? 'dashboard.php' : 'patients.php'; ?>" class="btn btn-secondary">← Back</a>
-                <?php if (in_array($user_role, ['admin', 'receptionist'])): ?>
-                    <a href="book-appointment.php?patient_id=<?php echo $patient['id']; ?>" class="btn btn-primary">Book Appointment</a>
-                <?php endif; ?>
+    <div class="dashboard-container">
+        <!-- Sidebar -->
+        <aside class="sidebar">
+            <div class="sidebar-header">
+                <h2><i class="fas fa-hospital"></i> Hospital CRM</h2>
+                <p><?php echo htmlspecialchars($_SESSION['role_display']); ?></p>
             </div>
-        </div>
-        
-        <div class="patient-overview">
-            <div class="patient-card">
-                <div class="patient-avatar">
-                    <?php echo strtoupper(substr($patient['first_name'], 0, 1) . substr($patient['last_name'], 0, 1)); ?>
+            <ul class="sidebar-menu">
+                <li><a href="dashboard.php"><i class="fas fa-home"></i> Dashboard</a></li>
+                <li><a href="patients.php" class="active"><i class="fas fa-users"></i> Patients</a></li>
+                <li><a href="doctors.php"><i class="fas fa-user-md"></i> Doctors</a></li>
+                <li><a href="appointments.php"><i class="fas fa-calendar-alt"></i> Appointments</a></li>
+                <li><a href="pharmacy.php"><i class="fas fa-pills"></i> Pharmacy</a></li>
+                <li><a href="laboratory.php"><i class="fas fa-flask"></i> Laboratory</a></li>
+                <li><a href="billing.php"><i class="fas fa-file-invoice-dollar"></i> Billing</a></li>
+                <li><a href="logout.php"><i class="fas fa-sign-out-alt"></i> Logout</a></li>
+            </ul>
+        </aside>
+
+        <!-- Main Content -->
+        <main class="main-content">
+            <div class="header">
+                <div>
+                    <h1><i class="fas fa-user"></i> Patient Details</h1>
+                    <p><?php echo htmlspecialchars($patient['first_name'] . ' ' . $patient['last_name']); ?></p>
                 </div>
-                <div class="patient-name">
-                    <?php echo htmlspecialchars($patient['first_name'] . ' ' . $patient['last_name']); ?>
-                </div>
-                <div class="patient-id">
-                    Patient ID: <?php echo htmlspecialchars($patient['patient_id']); ?>
-                </div>
-                
-                <div style="text-align: left; margin-top: 20px;">
-                    <div style="display: flex; justify-content: space-between; margin-bottom: 10px;">
-                        <span style="color: #666;">Age:</span>
-                        <span style="font-weight: 500;"><?php echo $patient['age'] ?? 'N/A'; ?> years</span>
-                    </div>
-                    <div style="display: flex; justify-content: space-between; margin-bottom: 10px;">
-                        <span style="color: #666;">Gender:</span>
-                        <span style="font-weight: 500;"><?php echo ucfirst($patient['gender'] ?? 'N/A'); ?></span>
-                    </div>
-                    <div style="display: flex; justify-content: space-between; margin-bottom: 10px;">
-                        <span style="color: #666;">Blood Group:</span>
-                        <span style="font-weight: 500;"><?php echo htmlspecialchars($patient['blood_group'] ?? 'N/A'); ?></span>
-                    </div>
-                    <div style="display: flex; justify-content: space-between;">
-                        <span style="color: #666;">Phone:</span>
-                        <span style="font-weight: 500;"><?php echo htmlspecialchars($patient['phone']); ?></span>
-                    </div>
+                <div>
+                    <a href="patients.php" class="btn btn-primary">
+                        <i class="fas fa-arrow-left"></i> Back to Patients
+                    </a>
+                    <a href="patients.php?edit=<?php echo $patient['id']; ?>" class="btn btn-warning">
+                        <i class="fas fa-edit"></i> Edit Patient
+                    </a>
                 </div>
             </div>
-            
-            <div class="patient-info">
-                <h3 style="color: #004685; margin-bottom: 20px;">Patient Information</h3>
-                <div class="info-grid">
-                    <div class="info-item">
-                        <label>Full Name</label>
-                        <span><?php echo htmlspecialchars(trim($patient['first_name'] . ' ' . ($patient['middle_name'] ?? '') . ' ' . $patient['last_name'])); ?></span>
-                    </div>
-                    
-                    <div class="info-item">
-                        <label>Email</label>
-                        <span><?php echo htmlspecialchars($patient['email'] ?? 'Not provided'); ?></span>
-                    </div>
-                    
-                    <div class="info-item">
-                        <label>Date of Birth</label>
-                        <span><?php echo $patient['date_of_birth'] ? date('M d, Y', strtotime($patient['date_of_birth'])) : 'Not provided'; ?></span>
-                    </div>
-                    
-                    <div class="info-item">
-                        <label>Emergency Contact</label>
-                        <span><?php echo htmlspecialchars($patient['emergency_contact'] ?? 'Not provided'); ?></span>
-                    </div>
-                    
-                    <div class="info-item">
-                        <label>Marital Status</label>
-                        <span><?php echo ucfirst($patient['marital_status'] ?? 'Not specified'); ?></span>
-                    </div>
-                    
-                    <div class="info-item">
-                        <label>Occupation</label>
-                        <span><?php echo htmlspecialchars($patient['occupation'] ?? 'Not provided'); ?></span>
-                    </div>
-                </div>
-                
-                <?php if ($patient['address']): ?>
-                <div style="margin-top: 20px;">
-                    <label style="font-size: 12px; color: #666; font-weight: 500;">Address</label>
-                    <div style="margin-top: 5px; font-weight: 500; color: #333;">
-                        <?php echo htmlspecialchars($patient['address']); ?>
-                    </div>
-                </div>
-                <?php endif; ?>
-                
-                <?php if ($patient['medical_history'] || $patient['allergies']): ?>
-                <div style="margin-top: 20px;">
-                    <?php if ($patient['medical_history']): ?>
-                    <div style="margin-bottom: 15px;">
-                        <label style="font-size: 12px; color: #666; font-weight: 500;">Medical History</label>
-                        <div style="margin-top: 5px; color: #333; background: #f8f9fa; padding: 10px; border-radius: 5px;">
-                            <?php echo nl2br(htmlspecialchars($patient['medical_history'])); ?>
-                        </div>
-                    </div>
-                    <?php endif; ?>
-                    
-                    <?php if ($patient['allergies']): ?>
-                    <div>
-                        <label style="font-size: 12px; color: #666; font-weight: 500;">Allergies</label>
-                        <div style="margin-top: 5px; color: #721c24; background: #f8d7da; padding: 10px; border-radius: 5px; border: 1px solid #f5c6cb;">
-                            <?php echo nl2br(htmlspecialchars($patient['allergies'])); ?>
-                        </div>
-                    </div>
-                    <?php endif; ?>
-                </div>
-                <?php endif; ?>
-            </div>
-        </div>
-        
-        <div class="tabs">
-            <div class="tab-buttons">
-                <button class="tab-button active" onclick="showTab('appointments')">Appointments</button>
-                <button class="tab-button" onclick="showTab('prescriptions')">Prescriptions</button>
-                <button class="tab-button" onclick="showTab('vitals')">Vitals</button>
-                <button class="tab-button" onclick="showTab('lab-orders')">Lab Tests</button>
-                <button class="tab-button" onclick="showTab('bills')">Bills</button>
-            </div>
-            
-            <div id="appointments" class="tab-content active">
-                <h3 style="color: #004685; margin-bottom: 20px;">Recent Appointments</h3>
-                <?php if (empty($appointments)): ?>
-                    <div class="empty-state">
-                        <h3>No appointments found</h3>
-                        <p>This patient hasn't had any appointments yet.</p>
-                    </div>
-                <?php else: ?>
-                    <ul class="records-list">
-                        <?php foreach ($appointments as $appointment): ?>
-                            <li class="record-item">
-                                <div class="record-main">
-                                    <div class="record-title">
-                                        Dr. <?php echo htmlspecialchars($appointment['doctor_name']); ?>
-                                    </div>
-                                    <div class="record-details">
-                                        <?php echo htmlspecialchars($appointment['specialization']); ?> • 
-                                        <?php echo ucfirst(str_replace('_', ' ', $appointment['type'])); ?>
-                                        <?php if ($appointment['chief_complaint']): ?>
-                                            <br><?php echo htmlspecialchars(substr($appointment['chief_complaint'], 0, 100)); ?>
-                                            <?php if (strlen($appointment['chief_complaint']) > 100): ?>...<?php endif; ?>
-                                        <?php endif; ?>
-                                    </div>
-                                </div>
-                                <div style="text-align: right;">
-                                    <div class="record-date">
-                                        <?php echo date('M d, Y', strtotime($appointment['appointment_date'])); ?><br>
-                                        <?php echo date('H:i', strtotime($appointment['appointment_time'])); ?>
-                                    </div>
-                                    <div style="margin-top: 5px;">
-                                        <span class="badge badge-<?php echo $appointment['status']; ?>">
-                                            <?php echo ucfirst($appointment['status']); ?>
-                                        </span>
-                                    </div>
-                                </div>
-                            </li>
-                        <?php endforeach; ?>
-                    </ul>
-                <?php endif; ?>
-            </div>
-            
-            <div id="prescriptions" class="tab-content">
-                <h3 style="color: #004685; margin-bottom: 20px;">Recent Prescriptions</h3>
-                <?php if (empty($prescriptions)): ?>
-                    <div class="empty-state">
-                        <h3>No prescriptions found</h3>
-                        <p>This patient hasn't been prescribed any medications yet.</p>
-                    </div>
-                <?php else: ?>
-                    <ul class="records-list">
-                        <?php foreach ($prescriptions as $prescription): ?>
-                            <li class="record-item">
-                                <div class="record-main">
-                                    <div class="record-title">
-                                        <?php echo htmlspecialchars($prescription['prescription_number']); ?>
-                                    </div>
-                                    <div class="record-details">
-                                        By Dr. <?php echo htmlspecialchars($prescription['doctor_name']); ?> • 
-                                        <?php echo $prescription['medicine_count']; ?> medicines
-                                        <?php if ($prescription['diagnosis']): ?>
-                                            <br><strong>Diagnosis:</strong> <?php echo htmlspecialchars(substr($prescription['diagnosis'], 0, 100)); ?>
-                                            <?php if (strlen($prescription['diagnosis']) > 100): ?>...<?php endif; ?>
-                                        <?php endif; ?>
-                                    </div>
-                                </div>
-                                <div style="text-align: right;">
-                                    <div class="record-date">
-                                        <?php echo date('M d, Y', strtotime($prescription['created_at'])); ?>
-                                    </div>
-                                    <div style="margin-top: 5px;">
-                                        <span class="badge badge-<?php echo $prescription['status']; ?>">
-                                            <?php echo ucfirst($prescription['status']); ?>
-                                        </span>
-                                    </div>
-                                </div>
-                            </li>
-                        <?php endforeach; ?>
-                    </ul>
-                <?php endif; ?>
-            </div>
-            
-            <div id="vitals" class="tab-content">
-                <h3 style="color: #004685; margin-bottom: 20px;">Recent Vitals</h3>
-                <?php if (empty($vitals)): ?>
-                    <div class="empty-state">
-                        <h3>No vitals recorded</h3>
-                        <p>No vital signs have been recorded for this patient yet.</p>
-                    </div>
-                <?php else: ?>
-                    <?php foreach ($vitals as $vital): ?>
-                        <div style="margin-bottom: 25px; padding: 20px; background: #f8f9fa; border-radius: 8px;">
-                            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px;">
-                                <h4 style="color: #333;">Recorded on <?php echo date('M d, Y', strtotime($vital['recorded_at'])); ?></h4>
-                                <small style="color: #666;">by <?php echo htmlspecialchars($vital['recorded_by_name']); ?></small>
+
+            <!-- Patient Information -->
+            <div class="grid grid-3">
+                <!-- Basic Information -->
+                <div class="card">
+                    <h3><i class="fas fa-user"></i> Basic Information</h3>
+                    <div class="text-center mb-3">
+                        <?php if ($patient['photo']): ?>
+                            <img src="<?php echo ImageUploadHandler::getFileUrl($patient['photo'], 'patients'); ?>" 
+                                 alt="Patient Photo" style="width: 120px; height: 120px; border-radius: 50%; object-fit: cover;">
+                        <?php else: ?>
+                            <div style="width: 120px; height: 120px; border-radius: 50%; background: #ccc; display: flex; align-items: center; justify-content: center; margin: 0 auto;">
+                                <i class="fas fa-user" style="font-size: 40px; color: #666;"></i>
                             </div>
-                            
-                            <div class="vitals-grid">
-                                <?php if ($vital['height_cm']): ?>
-                                    <div class="vital-card">
-                                        <div class="vital-value"><?php echo $vital['height_cm']; ?> cm</div>
-                                        <div class="vital-label">Height</div>
-                                    </div>
-                                <?php endif; ?>
-                                
-                                <?php if ($vital['weight_kg']): ?>
-                                    <div class="vital-card">
-                                        <div class="vital-value"><?php echo $vital['weight_kg']; ?> kg</div>
-                                        <div class="vital-label">Weight</div>
-                                    </div>
-                                <?php endif; ?>
-                                
-                                <?php if ($vital['temperature_f']): ?>
-                                    <div class="vital-card">
-                                        <div class="vital-value"><?php echo $vital['temperature_f']; ?>°F</div>
-                                        <div class="vital-label">Temperature</div>
-                                    </div>
-                                <?php endif; ?>
-                                
-                                <?php if ($vital['blood_pressure_systolic'] && $vital['blood_pressure_diastolic']): ?>
-                                    <div class="vital-card">
-                                        <div class="vital-value"><?php echo $vital['blood_pressure_systolic']; ?>/<?php echo $vital['blood_pressure_diastolic']; ?></div>
-                                        <div class="vital-label">Blood Pressure</div>
-                                    </div>
-                                <?php endif; ?>
-                                
-                                <?php if ($vital['heart_rate']): ?>
-                                    <div class="vital-card">
-                                        <div class="vital-value"><?php echo $vital['heart_rate']; ?> bpm</div>
-                                        <div class="vital-label">Heart Rate</div>
-                                    </div>
-                                <?php endif; ?>
-                                
-                                <?php if ($vital['oxygen_saturation']): ?>
-                                    <div class="vital-card">
-                                        <div class="vital-value"><?php echo $vital['oxygen_saturation']; ?>%</div>
-                                        <div class="vital-label">Oxygen Saturation</div>
-                                    </div>
-                                <?php endif; ?>
-                            </div>
-                            
-                            <?php if ($vital['notes']): ?>
-                                <div style="margin-top: 15px; padding: 10px; background: white; border-radius: 5px;">
-                                    <strong>Notes:</strong> <?php echo htmlspecialchars($vital['notes']); ?>
-                                </div>
-                            <?php endif; ?>
-                        </div>
-                    <?php endforeach; ?>
-                <?php endif; ?>
-            </div>
-            
-            <div id="lab-orders" class="tab-content">
-                <h3 style="color: #004685; margin-bottom: 20px;">Lab Test Orders</h3>
-                <?php if (empty($lab_orders)): ?>
-                    <div class="empty-state">
-                        <h3>No lab orders found</h3>
-                        <p>No laboratory tests have been ordered for this patient yet.</p>
+                        <?php endif; ?>
                     </div>
-                <?php else: ?>
-                    <ul class="records-list">
-                        <?php foreach ($lab_orders as $order): ?>
-                            <li class="record-item">
-                                <div class="record-main">
-                                    <div class="record-title">
-                                        Order #<?php echo htmlspecialchars($order['order_number']); ?>
-                                    </div>
-                                    <div class="record-details">
-                                        Ordered by Dr. <?php echo htmlspecialchars($order['doctor_name']); ?> • 
-                                        <?php echo $order['test_count']; ?> tests • 
-                                        <?php echo ucfirst($order['priority']); ?> priority
-                                        <?php if ($order['clinical_notes']): ?>
-                                            <br><?php echo htmlspecialchars(substr($order['clinical_notes'], 0, 100)); ?>
-                                            <?php if (strlen($order['clinical_notes']) > 100): ?>...<?php endif; ?>
-                                        <?php endif; ?>
-                                    </div>
-                                </div>
-                                <div style="text-align: right;">
-                                    <div class="record-date">
-                                        <?php echo date('M d, Y', strtotime($order['order_date'])); ?>
-                                    </div>
-                                    <div style="margin-top: 5px;">
-                                        <span class="badge badge-<?php echo $order['status']; ?>">
-                                            <?php echo ucfirst(str_replace('_', ' ', $order['status'])); ?>
-                                        </span>
-                                    </div>
-                                </div>
-                            </li>
-                        <?php endforeach; ?>
-                    </ul>
-                <?php endif; ?>
-            </div>
-            
-            <div id="bills" class="tab-content">
-                <h3 style="color: #004685; margin-bottom: 20px;">Billing History</h3>
-                <?php if (empty($bills)): ?>
-                    <div class="empty-state">
-                        <h3>No bills found</h3>
-                        <p>No bills have been generated for this patient yet.</p>
+                    
+                    <table style="width: 100%;">
+                        <tr>
+                            <td><strong>Patient ID:</strong></td>
+                            <td><?php echo htmlspecialchars($patient['patient_id']); ?></td>
+                        </tr>
+                        <tr>
+                            <td><strong>Name:</strong></td>
+                            <td><?php echo htmlspecialchars($patient['first_name'] . ' ' . $patient['last_name']); ?></td>
+                        </tr>
+                        <tr>
+                            <td><strong>Email:</strong></td>
+                            <td><?php echo htmlspecialchars($patient['email']); ?></td>
+                        </tr>
+                        <tr>
+                            <td><strong>Phone:</strong></td>
+                            <td><?php echo htmlspecialchars($patient['phone']); ?></td>
+                        </tr>
+                        <tr>
+                            <td><strong>Gender:</strong></td>
+                            <td><?php echo htmlspecialchars(ucfirst($patient['gender'])); ?></td>
+                        </tr>
+                        <tr>
+                            <td><strong>Date of Birth:</strong></td>
+                            <td><?php echo $patient['date_of_birth'] ? date('d M Y', strtotime($patient['date_of_birth'])) : 'Not specified'; ?></td>
+                        </tr>
+                        <tr>
+                            <td><strong>Age:</strong></td>
+                            <td><?php echo calculateAge($patient['date_of_birth']); ?> years</td>
+                        </tr>
+                        <tr>
+                            <td><strong>Blood Group:</strong></td>
+                            <td><?php echo htmlspecialchars($patient['blood_group']) ?: 'Not specified'; ?></td>
+                        </tr>
+                    </table>
+                </div>
+
+                <!-- Contact Information -->
+                <div class="card">
+                    <h3><i class="fas fa-address-book"></i> Contact Information</h3>
+                    <table style="width: 100%;">
+                        <tr>
+                            <td><strong>Address:</strong></td>
+                            <td><?php echo nl2br(htmlspecialchars($patient['address'])) ?: 'Not specified'; ?></td>
+                        </tr>
+                        <tr>
+                            <td><strong>Emergency Contact:</strong></td>
+                            <td><?php echo htmlspecialchars($patient['emergency_contact_name']) ?: 'Not specified'; ?></td>
+                        </tr>
+                        <tr>
+                            <td><strong>Emergency Phone:</strong></td>
+                            <td><?php echo htmlspecialchars($patient['emergency_contact_phone']) ?: 'Not specified'; ?></td>
+                        </tr>
+                        <tr>
+                            <td><strong>Registration Date:</strong></td>
+                            <td><?php echo date('d M Y', strtotime($patient['created_at'])); ?></td>
+                        </tr>
+                        <tr>
+                            <td><strong>Last Updated:</strong></td>
+                            <td><?php echo date('d M Y H:i', strtotime($patient['updated_at'])); ?></td>
+                        </tr>
+                    </table>
+                </div>
+
+                <!-- Medical Information -->
+                <div class="card">
+                    <h3><i class="fas fa-heartbeat"></i> Medical Information</h3>
+                    <div class="form-group">
+                        <strong>Medical History:</strong>
+                        <p><?php echo nl2br(htmlspecialchars($patient['medical_history'])) ?: 'No medical history recorded'; ?></p>
                     </div>
-                <?php else: ?>
-                    <ul class="records-list">
-                        <?php foreach ($bills as $bill): ?>
-                            <li class="record-item">
-                                <div class="record-main">
-                                    <div class="record-title">
-                                        <?php echo htmlspecialchars($bill['bill_number']); ?>
-                                    </div>
-                                    <div class="record-details">
-                                        <?php echo ucfirst($bill['bill_type']); ?> • 
-                                        Total: ₹<?php echo number_format($bill['total_amount'], 2); ?> • 
-                                        Balance: ₹<?php echo number_format($bill['balance_amount'], 2); ?>
-                                        <?php if ($bill['notes']): ?>
-                                            <br><?php echo htmlspecialchars(substr($bill['notes'], 0, 100)); ?>
-                                            <?php if (strlen($bill['notes']) > 100): ?>...<?php endif; ?>
-                                        <?php endif; ?>
-                                    </div>
-                                </div>
-                                <div style="text-align: right;">
-                                    <div class="record-date">
-                                        <?php echo date('M d, Y', strtotime($bill['bill_date'])); ?>
-                                    </div>
-                                    <div style="margin-top: 5px;">
-                                        <span class="badge badge-<?php echo $bill['payment_status']; ?>">
-                                            <?php echo ucfirst($bill['payment_status']); ?>
-                                        </span>
-                                    </div>
-                                </div>
-                            </li>
-                        <?php endforeach; ?>
-                    </ul>
-                <?php endif; ?>
+                    <div class="form-group">
+                        <strong>Allergies:</strong>
+                        <p><?php echo nl2br(htmlspecialchars($patient['allergies'])) ?: 'No known allergies'; ?></p>
+                    </div>
+                </div>
             </div>
-        </div>
+
+            <!-- Recent Activities -->
+            <div class="grid grid-2">
+                <!-- Recent Appointments -->
+                <div class="card">
+                    <h3><i class="fas fa-calendar-alt"></i> Recent Appointments</h3>
+                    <?php if (empty($appointments)): ?>
+                        <p class="text-muted">No appointments found.</p>
+                    <?php else: ?>
+                        <table class="table">
+                            <thead>
+                                <tr>
+                                    <th>Date</th>
+                                    <th>Doctor</th>
+                                    <th>Type</th>
+                                    <th>Status</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <?php foreach ($appointments as $appointment): ?>
+                                    <tr>
+                                        <td><?php echo date('d M Y', strtotime($appointment['appointment_date'])); ?></td>
+                                        <td><?php echo htmlspecialchars($appointment['doctor_name']); ?></td>
+                                        <td><?php echo htmlspecialchars(ucfirst(str_replace('_', ' ', $appointment['appointment_type']))); ?></td>
+                                        <td>
+                                            <span class="badge badge-<?php 
+                                                echo $appointment['status'] == 'scheduled' ? 'info' : 
+                                                    ($appointment['status'] == 'completed' ? 'success' : 
+                                                    ($appointment['status'] == 'cancelled' ? 'danger' : 'warning')); 
+                                            ?>">
+                                                <?php echo htmlspecialchars(ucfirst(str_replace('_', ' ', $appointment['status']))); ?>
+                                            </span>
+                                        </td>
+                                    </tr>
+                                <?php endforeach; ?>
+                            </tbody>
+                        </table>
+                    <?php endif; ?>
+                </div>
+
+                <!-- Recent Prescriptions -->
+                <div class="card">
+                    <h3><i class="fas fa-prescription-bottle-alt"></i> Recent Prescriptions</h3>
+                    <?php if (empty($prescriptions)): ?>
+                        <p class="text-muted">No prescriptions found.</p>
+                    <?php else: ?>
+                        <table class="table">
+                            <thead>
+                                <tr>
+                                    <th>Date</th>
+                                    <th>Doctor</th>
+                                    <th>Diagnosis</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <?php foreach ($prescriptions as $prescription): ?>
+                                    <tr>
+                                        <td><?php echo date('d M Y', strtotime($prescription['created_at'])); ?></td>
+                                        <td><?php echo htmlspecialchars($prescription['doctor_name']); ?></td>
+                                        <td><?php echo htmlspecialchars(substr($prescription['diagnosis'], 0, 50)) . (strlen($prescription['diagnosis']) > 50 ? '...' : ''); ?></td>
+                                    </tr>
+                                <?php endforeach; ?>
+                            </tbody>
+                        </table>
+                    <?php endif; ?>
+                </div>
+            </div>
+
+            <div class="grid grid-2">
+                <!-- Recent Lab Tests -->
+                <div class="card">
+                    <h3><i class="fas fa-flask"></i> Recent Lab Tests</h3>
+                    <?php if (empty($lab_tests)): ?>
+                        <p class="text-muted">No lab tests found.</p>
+                    <?php else: ?>
+                        <table class="table">
+                            <thead>
+                                <tr>
+                                    <th>Test ID</th>
+                                    <th>Date</th>
+                                    <th>Status</th>
+                                    <th>Amount</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <?php foreach ($lab_tests as $test): ?>
+                                    <tr>
+                                        <td><?php echo htmlspecialchars($test['test_id']); ?></td>
+                                        <td><?php echo date('d M Y', strtotime($test['test_date'])); ?></td>
+                                        <td>
+                                            <span class="badge badge-<?php 
+                                                echo $test['status'] == 'completed' ? 'success' : 
+                                                    ($test['status'] == 'pending' ? 'warning' : 'info'); 
+                                            ?>">
+                                                <?php echo htmlspecialchars(ucfirst(str_replace('_', ' ', $test['status']))); ?>
+                                            </span>
+                                        </td>
+                                        <td><?php echo formatCurrency($test['final_amount']); ?></td>
+                                    </tr>
+                                <?php endforeach; ?>
+                            </tbody>
+                        </table>
+                    <?php endif; ?>
+                </div>
+
+                <!-- Recent Bills -->
+                <div class="card">
+                    <h3><i class="fas fa-file-invoice-dollar"></i> Recent Bills</h3>
+                    <?php if (empty($bills)): ?>
+                        <p class="text-muted">No bills found.</p>
+                    <?php else: ?>
+                        <table class="table">
+                            <thead>
+                                <tr>
+                                    <th>Bill ID</th>
+                                    <th>Date</th>
+                                    <th>Amount</th>
+                                    <th>Status</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <?php foreach ($bills as $bill): ?>
+                                    <tr>
+                                        <td><?php echo htmlspecialchars($bill['bill_id']); ?></td>
+                                        <td><?php echo date('d M Y', strtotime($bill['bill_date'])); ?></td>
+                                        <td><?php echo formatCurrency($bill['total_amount']); ?></td>
+                                        <td>
+                                            <span class="badge badge-<?php 
+                                                echo $bill['payment_status'] == 'paid' ? 'success' : 
+                                                    ($bill['payment_status'] == 'pending' ? 'warning' : 
+                                                    ($bill['payment_status'] == 'overdue' ? 'danger' : 'info')); 
+                                            ?>">
+                                                <?php echo htmlspecialchars(ucfirst($bill['payment_status'])); ?>
+                                            </span>
+                                        </td>
+                                    </tr>
+                                <?php endforeach; ?>
+                            </tbody>
+                        </table>
+                    <?php endif; ?>
+                </div>
+            </div>
+        </main>
     </div>
-    
-    <script>
-        function showTab(tabName) {
-            // Hide all tab contents
-            document.querySelectorAll('.tab-content').forEach(content => {
-                content.classList.remove('active');
-            });
-            
-            // Remove active class from all buttons
-            document.querySelectorAll('.tab-button').forEach(button => {
-                button.classList.remove('active');
-            });
-            
-            // Show selected tab content
-            document.getElementById(tabName).classList.add('active');
-            
-            // Add active class to clicked button
-            event.target.classList.add('active');
-        }
-    </script>
 </body>
 </html>

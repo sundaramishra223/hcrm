@@ -1,6 +1,7 @@
 <?php
 session_start();
 require_once 'config/database.php';
+require_once 'includes/functions.php';
 
 if (!isset($_SESSION['user_id'])) {
     header('Location: index.php');
@@ -11,256 +12,270 @@ $db = new Database();
 $user_role = $_SESSION['role'];
 $user_name = $_SESSION['username'];
 
-$stats = [];
+// Get dashboard statistics
 try {
-    if ($user_role === 'admin') {
-        $stats['total_patients'] = $db->query("SELECT COUNT(*) as count FROM patients")->fetch()['count'];
-        $stats['total_doctors'] = $db->query("SELECT COUNT(*) as count FROM doctors")->fetch()['count'];
-        $stats['total_appointments'] = $db->query("SELECT COUNT(*) as count FROM appointments WHERE appointment_date = CURDATE()")->fetch()['count'];
-        $stats['total_revenue'] = $db->query("SELECT SUM(total_amount) as revenue FROM bills WHERE DATE(created_at) = CURDATE()")->fetch()['revenue'] ?? 0;
-    }
-} catch (Exception $e) {
     $stats = [];
+    
+    // Total patients
+    $stats['patients'] = $db->query("SELECT COUNT(*) as count FROM patients")->fetch()['count'] ?? 0;
+    
+    // Total doctors
+    $stats['doctors'] = $db->query("SELECT COUNT(*) as count FROM doctors WHERE is_active = 1")->fetch()['count'] ?? 0;
+    
+    // Today's appointments
+    $stats['appointments_today'] = $db->query("SELECT COUNT(*) as count FROM appointments WHERE DATE(appointment_date) = CURDATE()")->fetch()['count'] ?? 0;
+    
+    // Total staff
+    $stats['staff'] = $db->query("SELECT COUNT(*) as count FROM staff WHERE is_active = 1")->fetch()['count'] ?? 0;
+    
+    // Pending appointments
+    $stats['pending_appointments'] = $db->query("SELECT COUNT(*) as count FROM appointments WHERE status = 'scheduled' AND appointment_date >= CURDATE()")->fetch()['count'] ?? 0;
+    
+    // Total revenue this month
+    $stats['revenue'] = $db->query("SELECT COALESCE(SUM(total_amount), 0) as total FROM billing WHERE MONTH(created_at) = MONTH(CURDATE()) AND YEAR(created_at) = YEAR(CURDATE())")->fetch()['total'] ?? 0;
+    
+} catch (Exception $e) {
+    $stats = [
+        'patients' => 0,
+        'doctors' => 0,
+        'appointments_today' => 0,
+        'staff' => 0,
+        'pending_appointments' => 0,
+        'revenue' => 0
+    ];
+}
+
+// Get recent activities
+try {
+    $recent_appointments = $db->query("
+        SELECT a.*, p.first_name, p.last_name, d.doctor_name 
+        FROM appointments a 
+        LEFT JOIN patients p ON a.patient_id = p.id 
+        LEFT JOIN doctors d ON a.doctor_id = d.id 
+        WHERE a.appointment_date >= CURDATE() 
+        ORDER BY a.appointment_date, a.appointment_time 
+        LIMIT 5
+    ")->fetchAll();
+} catch (Exception $e) {
+    $recent_appointments = [];
 }
 ?>
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-  <title>Cliniva Admin Dashboard</title>
-  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-  <style>
-    * { margin: 0; padding: 0; box-sizing: border-box; }
-    body { font-family: 'Poppins', sans-serif; background: #f5f7fa; }
-    .dashboard-container { display: flex; min-height: 100vh; }
-
-    .sidebar {
-      width: 250px;
-      background: #004685;
-      color: white;
-      padding: 20px 0;
-      position: fixed;
-      height: 100vh;
-      overflow-y: auto;
-    }
-
-    .sidebar-header {
-      padding: 0 20px 20px;
-      border-bottom: 1px solid #0066cc;
-      margin-bottom: 20px;
-    }
-
-    .sidebar-header h2 { font-size: 20px; margin-bottom: 5px; }
-    .sidebar-header p { font-size: 12px; opacity:  0.8; }
-
-    .sidebar-menu { list-style: none; }
-    .sidebar-menu li { margin-bottom: 5px; }
-    .sidebar-menu a {
-      display: block;
-      padding: 12px 20px;
-      color: white;
-      text-decoration: none;
-      transition: background 0.3s;
-    }
-    .sidebar-menu a:hover, .sidebar-menu a.active {
-      background: #0066cc;
-    }
-
-    .main-content {
-      margin-left: 250px;
-      flex: 1;
-      padding: 20px;
-    }
-
-    .dashboard-header {
-      background: white;
-      padding: 20px;
-      border-radius: 10px;
-      box-shadow: 0 2px 10px rgba(0,0,0,0.1);
-      margin-bottom: 20px;
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-    }
-
-    .user-info {
-      display: flex;
-      align-items: center;
-      gap: 15px;
-    }
-
-    .logout-btn {
-      background: #dc3545;
-      color: white;
-      padding: 8px 16px;
-      border: none;
-      border-radius: 5px;
-      text-decoration: none;
-      font-size: 14px;
-    }
-
-    .stats-grid {
-      display: grid;
-      grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
-      gap: 20px;
-      margin-bottom: 30px;
-    }
-
-    .stat-card {
-      background: white;
-      padding: 25px;
-      border-radius: 10px;
-      box-shadow: 0 2px 10px rgba(0,0,0,0.1);
-      text-align: center;
-    }
-
-    .stat-card h3 {
-      font-size: 32px;
-      color: #004685;
-      margin-bottom: 10px;
-    }
-
-    .quick-actions {
-      background: white;
-      padding: 25px;
-      border-radius: 10px;
-      box-shadow: 0 2px 10px rgba(0,0,0,0.1);
-    }
-
-    #chartRange {
-      padding: 8px 12px;
-      font-size: 14px;
-      border-radius: 6px;
-      border: 1px solid #ccc;
-      margin-bottom: 20px;
-    }
-
-    @media (max-width: 768px) {
-      .sidebar { width: 100%; height: auto; position: relative; }
-      .main-content { margin-left: 0; }
-      .dashboard-header { flex-direction: column; gap: 15px; text-align: center; }
-    }
-  </style>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Dashboard - Hospital CRM</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <?php renderDynamicStyles(); ?>
 </head>
 <body>
-<div class="dashboard-container">
-  <aside class="sidebar">
-    <div class="sidebar-header">
-      <h2>Hospital CRM</h2>
-      <p><?php echo htmlspecialchars($_SESSION['role_display']); ?></p>
+    <div class="dashboard-container">
+        <!-- Sidebar -->
+        <aside class="sidebar" id="sidebar">
+            <div class="sidebar-header">
+                <h2><i class="fas fa-hospital"></i> Hospital CRM</h2>
+                <p><?php echo htmlspecialchars($_SESSION['role_display']); ?></p>
+            </div>
+            <ul class="sidebar-menu">
+                <li><a href="dashboard.php" class="active"><i class="fas fa-home"></i> Dashboard</a></li>
+                
+                <?php if (in_array($user_role, ['admin', 'receptionist'])): ?>
+                    <li><a href="patients.php"><i class="fas fa-users"></i> Patients</a></li>
+                <?php endif; ?>
+                
+                <?php if (in_array($user_role, ['admin', 'doctor', 'intern_doctor'])): ?>
+                    <li><a href="doctors.php"><i class="fas fa-user-md"></i> Doctors</a></li>
+                <?php endif; ?>
+                
+                <?php if (in_array($user_role, ['admin', 'doctor', 'receptionist', 'intern_doctor'])): ?>
+                    <li><a href="appointments.php"><i class="fas fa-calendar-alt"></i> Appointments</a></li>
+                <?php endif; ?>
+                
+                <?php if (in_array($user_role, ['admin', 'receptionist', 'pharmacy_staff', 'intern_pharmacy'])): ?>
+                    <li><a href="pharmacy.php"><i class="fas fa-pills"></i> Pharmacy</a></li>
+                <?php endif; ?>
+                
+                <?php if (in_array($user_role, ['admin', 'doctor', 'lab_technician', 'intern_lab'])): ?>
+                    <li><a href="laboratory.php"><i class="fas fa-flask"></i> Laboratory</a></li>
+                <?php endif; ?>
+                
+                <?php if (in_array($user_role, ['admin', 'doctor'])): ?>
+                    <li><a href="prescriptions.php"><i class="fas fa-prescription-bottle-alt"></i> Prescriptions</a></li>
+                <?php endif; ?>
+                
+                <?php if (in_array($user_role, ['admin', 'accountant', 'receptionist'])): ?>
+                    <li><a href="billing.php"><i class="fas fa-file-invoice-dollar"></i> Billing</a></li>
+                <?php endif; ?>
+                
+                <?php if (in_array($user_role, ['admin'])): ?>
+                    <li><a href="staff.php"><i class="fas fa-user-tie"></i> Staff</a></li>
+                    <li><a href="equipment.php"><i class="fas fa-tools"></i> Equipment</a></li>
+                    <li><a href="reports.php"><i class="fas fa-chart-bar"></i> Reports</a></li>
+                <?php endif; ?>
+                
+                <li><a href="logout.php"><i class="fas fa-sign-out-alt"></i> Logout</a></li>
+            </ul>
+        </aside>
+
+        <!-- Main Content -->
+        <main class="main-content">
+            <!-- Header -->
+            <div class="header">
+                <div>
+                    <h1><i class="fas fa-tachometer-alt"></i> Dashboard</h1>
+                    <p>Welcome back, <?php echo htmlspecialchars($user_name); ?>!</p>
+                </div>
+                <div>
+                    <span class="text-muted"><?php echo date('l, F j, Y'); ?></span>
+                </div>
+            </div>
+
+            <!-- Statistics Cards -->
+            <div class="stats-grid">
+                <div class="stat-card">
+                    <h3><?php echo number_format($stats['patients']); ?></h3>
+                    <p><i class="fas fa-users"></i> Total Patients</p>
+                </div>
+                <div class="stat-card">
+                    <h3><?php echo number_format($stats['doctors']); ?></h3>
+                    <p><i class="fas fa-user-md"></i> Active Doctors</p>
+                </div>
+                <div class="stat-card">
+                    <h3><?php echo number_format($stats['appointments_today']); ?></h3>
+                    <p><i class="fas fa-calendar-day"></i> Today's Appointments</p>
+                </div>
+                <div class="stat-card">
+                    <h3><?php echo number_format($stats['staff']); ?></h3>
+                    <p><i class="fas fa-user-tie"></i> Active Staff</p>
+                </div>
+                <div class="stat-card">
+                    <h3><?php echo number_format($stats['pending_appointments']); ?></h3>
+                    <p><i class="fas fa-clock"></i> Pending Appointments</p>
+                </div>
+                <div class="stat-card">
+                    <h3><?php echo formatCurrency($stats['revenue']); ?></h3>
+                    <p><i class="fas fa-rupee-sign"></i> Monthly Revenue</p>
+                </div>
+            </div>
+
+            <!-- Main Content Grid -->
+            <div class="grid grid-2">
+                <!-- Recent Appointments -->
+                <div class="card">
+                    <h3><i class="fas fa-calendar-alt"></i> Upcoming Appointments</h3>
+                    <?php if (empty($recent_appointments)): ?>
+                        <p class="text-muted">No upcoming appointments found.</p>
+                    <?php else: ?>
+                        <div class="table-responsive">
+                            <table class="table">
+                                <thead>
+                                    <tr>
+                                        <th>Patient</th>
+                                        <th>Doctor</th>
+                                        <th>Date</th>
+                                        <th>Time</th>
+                                        <th>Status</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    <?php foreach ($recent_appointments as $appointment): ?>
+                                        <tr>
+                                            <td><?php echo htmlspecialchars($appointment['first_name'] . ' ' . $appointment['last_name']); ?></td>
+                                            <td><?php echo htmlspecialchars($appointment['doctor_name']); ?></td>
+                                            <td><?php echo date('M j, Y', strtotime($appointment['appointment_date'])); ?></td>
+                                            <td><?php echo date('g:i A', strtotime($appointment['appointment_time'])); ?></td>
+                                            <td>
+                                                <span class="badge badge-<?php echo $appointment['status'] == 'scheduled' ? 'info' : 'success'; ?>">
+                                                    <?php echo ucfirst($appointment['status']); ?>
+                                                </span>
+                                            </td>
+                                        </tr>
+                                    <?php endforeach; ?>
+                                </tbody>
+                            </table>
+                        </div>
+                    <?php endif; ?>
+                </div>
+
+                <!-- Quick Actions -->
+                <div class="card">
+                    <h3><i class="fas fa-bolt"></i> Quick Actions</h3>
+                    <div class="grid grid-2">
+                        <?php if (in_array($user_role, ['admin', 'receptionist'])): ?>
+                            <a href="patients.php" class="btn btn-primary">
+                                <i class="fas fa-user-plus"></i> Add Patient
+                            </a>
+                            <a href="appointments.php" class="btn btn-success">
+                                <i class="fas fa-calendar-plus"></i> Book Appointment
+                            </a>
+                        <?php endif; ?>
+                        
+                        <?php if (in_array($user_role, ['admin', 'doctor'])): ?>
+                            <a href="prescriptions.php" class="btn btn-info">
+                                <i class="fas fa-prescription"></i> New Prescription
+                            </a>
+                        <?php endif; ?>
+                        
+                        <?php if (in_array($user_role, ['admin', 'lab_technician'])): ?>
+                            <a href="laboratory.php" class="btn btn-warning">
+                                <i class="fas fa-flask"></i> Lab Tests
+                            </a>
+                        <?php endif; ?>
+                        
+                        <?php if (in_array($user_role, ['admin', 'accountant'])): ?>
+                            <a href="billing.php" class="btn btn-danger">
+                                <i class="fas fa-file-invoice"></i> Create Bill
+                            </a>
+                        <?php endif; ?>
+                        
+                        <?php if (in_array($user_role, ['admin'])): ?>
+                            <a href="reports.php" class="btn btn-primary">
+                                <i class="fas fa-chart-bar"></i> View Reports
+                            </a>
+                        <?php endif; ?>
+                    </div>
+                </div>
+            </div>
+
+            <!-- System Status -->
+            <div class="card">
+                <h3><i class="fas fa-info-circle"></i> System Information</h3>
+                <div class="grid grid-4">
+                    <div class="text-center">
+                        <h4>Database</h4>
+                        <span class="badge badge-success">Connected</span>
+                    </div>
+                    <div class="text-center">
+                        <h4>Server</h4>
+                        <span class="badge badge-success">Online</span>
+                    </div>
+                    <div class="text-center">
+                        <h4>Version</h4>
+                        <span class="badge badge-info">v2.0.0</span>
+                    </div>
+                    <div class="text-center">
+                        <h4>Last Backup</h4>
+                        <span class="badge badge-warning"><?php echo date('M j, Y'); ?></span>
+                    </div>
+                </div>
+            </div>
+        </main>
     </div>
-    <ul class="sidebar-menu">
-      <li><a href="dashboard.php" class="active">🏠 Dashboard</a></li>
-      <li><a href="patients.php">👥 Patients</a></li>
-      <li><a href="doctors.php">👨‍⚕️ Doctors</a></li>
-      <li><a href="appointments.php">📅 Appointments</a></li>
-      <li><a href="billing.php">💰 Billing</a></li>
-      <li><a href="reports.php">📊 Reports</a></li>
-      <li><a href="settings.php">⚙️ Settings</a></li>
-    </ul>
-  </aside>
-  <main class="main-content">
-    <div class="dashboard-header">
-      <h1>Welcome, <?php echo htmlspecialchars($user_name); ?>!</h1>
-      <div class="user-info">
-        <span><?php echo htmlspecialchars($_SESSION['role_display']); ?></span>
-        <a href="logout.php" class="logout-btn">Logout</a>
-      </div>
-    </div>
 
-    <div class="stats-grid">
-      <div class="stat-card">
-        <h3><?php echo number_format($stats['total_patients'] ?? 0); ?></h3>
-        <p>Total Patients</p>
-      </div>
-      <div class="stat-card">
-        <h3><?php echo number_format($stats['total_doctors'] ?? 0); ?></h3>
-        <p>Total Doctors</p>
-      </div>
-      <div class="stat-card">
-        <h3><?php echo number_format($stats['total_appointments'] ?? 0); ?></h3>
-        <p>Today's Appointments</p>
-      </div>
-      <div class="stat-card">
-        <h3>₹<?php echo number_format($stats['total_revenue'] ?? 0, 2); ?></h3>
-        <p>Today's Revenue</p>
-      </div>
-    </div>
-
-    <div class="quick-actions">
-      <h2>Quick Stats</h2>
-      <select id="chartRange">
-        <option value="7">Last 7 Days</option>
-        <option value="30">Last 30 Days</option>
-        <option value="90">Last 90 Days</option>
-      </select>
-      <canvas id="dashboardChart" height="100"></canvas>
-    </div>
-  </main>
-</div>
-
-<script>
-  document.addEventListener("DOMContentLoaded", function () {
-    const ctx = document.getElementById("dashboardChart").getContext("2d");
-    let chartInstance;
-
-    function fetchChartData(range = 7) {
-      fetch(`ajax/fetch_chart_data.php?range=${range}`)
-        .then(response => response.json())
-        .then(data => {
-          const labels = data.labels;
-          const appointments = data.appointments;
-          const revenue = data.revenue;
-
-          if (chartInstance) chartInstance.destroy();
-
-          chartInstance = new Chart(ctx, {
-            type: "line",
-            data: {
-              labels: labels,
-              datasets: [
-                {
-                  label: "Appointments",
-                  data: appointments,
-                  borderColor: "#004685",
-                  backgroundColor: "rgba(0,70,133,0.1)",
-                  fill: true
-                },
-                {
-                  label: "Revenue (₹)",
-                  data: revenue,
-                  borderColor: "#28a745",
-                  backgroundColor: "rgba(40,167,69,0.1)",
-                  fill: true
-                }
-              ]
-            },
-            options: {
-              responsive: true,
-              plugins: {
-                legend: {
-                  display: true,
-                  position: 'top'
-                }
-              },
-              scales: {
-                y: {
-                  beginAtZero: true
-                }
-              }
-            }
-          });
+    <script>
+        // Theme toggle functionality
+        function setTheme(theme) {
+            document.documentElement.setAttribute('data-theme', theme);
+            localStorage.setItem('theme', theme);
+        }
+        
+        // Initialize theme
+        document.addEventListener('DOMContentLoaded', function() {
+            const savedTheme = localStorage.getItem('theme') || 'light';
+            setTheme(savedTheme);
         });
-    }
-
-    document.getElementById("chartRange").addEventListener("change", function () {
-      fetchChartData(this.value);
-    });
-
-    fetchChartData(7);
-  });
-</script>
-
+    </script>
 </body>
 </html>
