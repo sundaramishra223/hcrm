@@ -1,10 +1,11 @@
 -- ============================================================================
 -- HOSPITAL CRM - COMPLETE DATABASE SCHEMA
 -- ============================================================================
--- Version: 2.0 (Updated with Insurance Management & Patient Portal)
+-- Version: 2.1 (Updated with Automatic Billing System)
 -- Created: 2024
 -- Features: Patient Management, Doctor Management, Appointments, Billing, 
---          Insurance, Pharmacy, Laboratory, Prescriptions, Equipment, Staff
+--          Insurance, Pharmacy, Laboratory, Prescriptions, Equipment, Staff,
+--          Automatic Service Aggregation Billing
 -- ============================================================================
 
 SET SQL_MODE = "NO_AUTO_VALUE_ON_ZERO";
@@ -193,35 +194,94 @@ CREATE TABLE `appointments` (
 -- ============================================================================
 
 -- --------------------------------------------------------
--- Table structure for table `billing`
+-- Table structure for table `billing` (Updated)
 -- --------------------------------------------------------
 
+DROP TABLE IF EXISTS `billing`;
 CREATE TABLE `billing` (
   `id` int(11) NOT NULL AUTO_INCREMENT,
   `bill_id` varchar(20) NOT NULL,
   `patient_id` int(11) NOT NULL,
   `appointment_id` int(11) DEFAULT NULL,
+  `pharmacy_sale_id` int(11) DEFAULT NULL,
+  `lab_test_id` int(11) DEFAULT NULL,
   `bill_date` date NOT NULL,
-  `total_amount` decimal(10,2) NOT NULL DEFAULT 0.00,
+  `due_date` date DEFAULT NULL,
+  `subtotal_amount` decimal(10,2) NOT NULL DEFAULT 0.00,
+  `discount_percentage` decimal(5,2) DEFAULT 0.00,
   `discount_amount` decimal(10,2) DEFAULT 0.00,
-  `tax_amount` decimal(10,2) DEFAULT 0.00,
+  `total_amount` decimal(10,2) NOT NULL,
   `paid_amount` decimal(10,2) DEFAULT 0.00,
   `balance_amount` decimal(10,2) DEFAULT 0.00,
-  `payment_status` enum('pending','partial','paid') DEFAULT 'pending',
-  `payment_method` enum('cash','card','upi','cheque','bank_transfer','insurance') DEFAULT NULL,
+  `payment_status` enum('pending','partial','paid','overdue') DEFAULT 'pending',
+  `payment_method` enum('cash','card','upi','bank_transfer','cheque') DEFAULT NULL,
   `payment_date` date DEFAULT NULL,
-  `notes` text,
-  `created_by` int(11) DEFAULT NULL,
-  `created_at` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
-  `updated_at` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  `notes` text DEFAULT NULL,
+  `created_by` int(11) NOT NULL,
+  `created_at` timestamp NOT NULL DEFAULT current_timestamp(),
+  `updated_at` timestamp NOT NULL DEFAULT current_timestamp() ON UPDATE current_timestamp(),
   PRIMARY KEY (`id`),
   UNIQUE KEY `bill_id` (`bill_id`),
   KEY `patient_id` (`patient_id`),
   KEY `appointment_id` (`appointment_id`),
+  KEY `pharmacy_sale_id` (`pharmacy_sale_id`),
+  KEY `lab_test_id` (`lab_test_id`),
   KEY `created_by` (`created_by`),
+  KEY `payment_status` (`payment_status`),
+  KEY `bill_date` (`bill_date`),
+  KEY `due_date` (`due_date`),
   CONSTRAINT `billing_ibfk_1` FOREIGN KEY (`patient_id`) REFERENCES `patients` (`id`),
   CONSTRAINT `billing_ibfk_2` FOREIGN KEY (`appointment_id`) REFERENCES `appointments` (`id`),
-  CONSTRAINT `billing_ibfk_3` FOREIGN KEY (`created_by`) REFERENCES `users` (`id`)
+  CONSTRAINT `billing_ibfk_3` FOREIGN KEY (`pharmacy_sale_id`) REFERENCES `pharmacy_sales` (`id`),
+  CONSTRAINT `billing_ibfk_4` FOREIGN KEY (`lab_test_id`) REFERENCES `lab_tests` (`id`),
+  CONSTRAINT `billing_ibfk_5` FOREIGN KEY (`created_by`) REFERENCES `users` (`id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- --------------------------------------------------------
+-- Table structure for table `bill_items`
+-- --------------------------------------------------------
+
+DROP TABLE IF EXISTS `bill_items`;
+CREATE TABLE `bill_items` (
+  `id` int(11) NOT NULL AUTO_INCREMENT,
+  `bill_id` int(11) NOT NULL,
+  `service_type` enum('consultation','pharmacy','lab_test','procedure','room_charge','other') NOT NULL,
+  `description` varchar(500) NOT NULL,
+  `service_date` date NOT NULL,
+  `quantity` int(11) DEFAULT 1,
+  `unit_price` decimal(10,2) DEFAULT 0.00,
+  `amount` decimal(10,2) NOT NULL,
+  `reference_id` int(11) DEFAULT NULL COMMENT 'Reference to appointment_id, pharmacy_sale_id, lab_test_id etc',
+  `created_at` timestamp NOT NULL DEFAULT current_timestamp(),
+  PRIMARY KEY (`id`),
+  KEY `bill_id` (`bill_id`),
+  KEY `service_type` (`service_type`),
+  KEY `service_date` (`service_date`),
+  CONSTRAINT `bill_items_ibfk_1` FOREIGN KEY (`bill_id`) REFERENCES `billing` (`id`) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- --------------------------------------------------------
+-- Table structure for table `payment_transactions`
+-- --------------------------------------------------------
+
+DROP TABLE IF EXISTS `payment_transactions`;
+CREATE TABLE `payment_transactions` (
+  `id` int(11) NOT NULL AUTO_INCREMENT,
+  `bill_id` int(11) NOT NULL,
+  `payment_amount` decimal(10,2) NOT NULL,
+  `payment_method` enum('cash','card','upi','bank_transfer','cheque') NOT NULL,
+  `payment_date` date NOT NULL,
+  `transaction_reference` varchar(100) DEFAULT NULL,
+  `notes` text DEFAULT NULL,
+  `recorded_by` int(11) NOT NULL,
+  `created_at` timestamp NOT NULL DEFAULT current_timestamp(),
+  PRIMARY KEY (`id`),
+  KEY `bill_id` (`bill_id`),
+  KEY `payment_method` (`payment_method`),
+  KEY `payment_date` (`payment_date`),
+  KEY `recorded_by` (`recorded_by`),
+  CONSTRAINT `payment_transactions_ibfk_1` FOREIGN KEY (`bill_id`) REFERENCES `billing` (`id`) ON DELETE CASCADE,
+  CONSTRAINT `payment_transactions_ibfk_2` FOREIGN KEY (`recorded_by`) REFERENCES `users` (`id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- ============================================================================
