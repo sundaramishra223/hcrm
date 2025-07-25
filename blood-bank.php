@@ -12,6 +12,13 @@ $db = new Database();
 $user_role = $_SESSION['role'];
 $user_id = $_SESSION['user_id'];
 
+// Get patient ID if user is a patient
+$patient_id = null;
+if ($user_role === 'patient') {
+    $patient_data = $db->query("SELECT id FROM patients WHERE user_id = ?", [$user_id])->fetch();
+    $patient_id = $patient_data['id'] ?? null;
+}
+
 // Handle form submissions
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     if (isset($_POST['action'])) {
@@ -39,7 +46,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 
             case 'add_request':
                 if (in_array($user_role, ['admin', 'doctor', 'nurse'])) {
-                    $patient_id = $_POST['patient_id'];
+                    $patient_id_req = $_POST['patient_id'];
                     $blood_type = $_POST['blood_type'];
                     $units_required = $_POST['units_required'];
                     $urgency_level = $_POST['urgency_level'];
@@ -47,33 +54,33 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     $notes = $_POST['notes'];
                     
                     $stmt = $db->prepare("INSERT INTO blood_requests (patient_id, blood_type, units_required, urgency_level, required_date, notes, requested_by, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, NOW())");
-                    $stmt->execute([$patient_id, $blood_type, $units_required, $urgency_level, $required_date, $notes, $user_id]);
+                    $stmt->execute([$patient_id_req, $blood_type, $units_required, $urgency_level, $required_date, $notes, $user_id]);
                     
-                    $success_message = "Blood request submitted successfully!";
+                    $success_message = "Blood request created successfully!";
                 }
                 break;
                 
             case 'fulfill_request':
                 if (in_array($user_role, ['admin', 'doctor', 'nurse'])) {
                     $request_id = $_POST['request_id'];
-                    $units_fulfilled = $_POST['units_fulfilled'];
+                    $blood_type = $_POST['blood_type'];
+                    $units_required = $_POST['units_required'];
                     
-                    // Get request details
-                    $stmt = $db->prepare("SELECT * FROM blood_requests WHERE id = ?");
-                    $stmt->execute([$request_id]);
-                    $request = $stmt->fetch(PDO::FETCH_ASSOC);
+                    // Check inventory
+                    $inventory = $db->query("SELECT units_available FROM blood_inventory WHERE blood_type = ?", [$blood_type])->fetch();
                     
-                    if ($request) {
+                    if ($inventory && $inventory['units_available'] >= $units_required) {
                         // Update request status
-                        $new_status = ($units_fulfilled >= $request['units_required']) ? 'fulfilled' : 'partial';
-                        $stmt = $db->prepare("UPDATE blood_requests SET status = ?, units_fulfilled = ?, fulfilled_by = ?, fulfilled_at = NOW() WHERE id = ?");
-                        $stmt->execute([$new_status, $units_fulfilled, $user_id, $request_id]);
+                        $stmt = $db->prepare("UPDATE blood_requests SET status = 'fulfilled', fulfilled_date = NOW(), fulfilled_by = ? WHERE id = ?");
+                        $stmt->execute([$user_id, $request_id]);
                         
-                        // Update blood inventory
+                        // Update inventory
                         $stmt = $db->prepare("UPDATE blood_inventory SET units_available = units_available - ?, last_updated = NOW() WHERE blood_type = ?");
-                        $stmt->execute([$units_fulfilled, $request['blood_type']]);
+                        $stmt->execute([$units_required, $blood_type]);
                         
                         $success_message = "Blood request fulfilled successfully!";
+                    } else {
+                        $error_message = "Insufficient blood units available in inventory!";
                     }
                 }
                 break;
@@ -81,23 +88,97 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     }
 }
 
-// Get statistics
-$total_donations = $db->query("SELECT COUNT(*) FROM blood_donations")->fetchColumn();
-$total_requests = $db->query("SELECT COUNT(*) FROM blood_requests")->fetchColumn();
-$pending_requests = $db->query("SELECT COUNT(*) FROM blood_requests WHERE status = 'pending'")->fetchColumn();
-$critical_requests = $db->query("SELECT COUNT(*) FROM blood_requests WHERE urgency_level = 'critical' AND status = 'pending'")->fetchColumn();
-
-// Get blood inventory
-$inventory = $db->query("SELECT * FROM blood_inventory ORDER BY blood_type")->fetchAll(PDO::FETCH_ASSOC);
-
-// Get recent donations
-$recent_donations = $db->query("SELECT bd.*, u.first_name, u.last_name FROM blood_donations bd LEFT JOIN users u ON bd.recorded_by = u.id ORDER BY bd.created_at DESC LIMIT 10")->fetchAll(PDO::FETCH_ASSOC);
-
-// Get blood requests
-$blood_requests = $db->query("SELECT br.*, p.first_name, p.last_name, p.patient_id, u.first_name as req_fname, u.last_name as req_lname FROM blood_requests br JOIN patients p ON br.patient_id = p.id LEFT JOIN users u ON br.requested_by = u.id ORDER BY br.created_at DESC")->fetchAll(PDO::FETCH_ASSOC);
-
-// Get patients for dropdown
-$patients = $db->query("SELECT id, patient_id, first_name, last_name FROM patients ORDER BY first_name, last_name")->fetchAll(PDO::FETCH_ASSOC);
+// Fetch data based on user role
+if ($user_role === 'patient') {
+    // Patient-specific data
+    
+    // Get patient's blood donation history
+    $my_donations = $db->query("
+        SELECT bd.*, u.first_name, u.last_name 
+        FROM blood_donations bd 
+        LEFT JOIN users u ON bd.recorded_by = u.id 
+        WHERE bd.donor_email = (SELECT email FROM users WHERE id = ?) 
+           OR bd.donor_phone = (SELECT phone FROM patients WHERE user_id = ?)
+        ORDER BY bd.donation_date DESC
+    ", [$user_id, $user_id])->fetchAll();
+    
+    // Get patient's blood requests
+    $my_requests = $db->query("
+        SELECT br.*, 
+               u1.first_name as requested_by_first, u1.last_name as requested_by_last,
+               u2.first_name as fulfilled_by_first, u2.last_name as fulfilled_by_last
+        FROM blood_requests br 
+        LEFT JOIN users u1 ON br.requested_by = u1.id 
+        LEFT JOIN users u2 ON br.fulfilled_by = u2.id 
+        WHERE br.patient_id = ? 
+        ORDER BY br.created_at DESC
+    ", [$patient_id])->fetchAll();
+    
+    // Get blood usage statistics for patient
+    $blood_usage_stats = $db->query("
+        SELECT 
+            COUNT(*) as total_requests,
+            SUM(CASE WHEN status = 'fulfilled' THEN units_required ELSE 0 END) as total_units_received,
+            COUNT(CASE WHEN status = 'fulfilled' THEN 1 END) as fulfilled_requests,
+            COUNT(CASE WHEN status = 'pending' THEN 1 END) as pending_requests
+        FROM blood_requests 
+        WHERE patient_id = ?
+    ", [$patient_id])->fetch();
+    
+    $donation_stats = $db->query("
+        SELECT 
+            COUNT(*) as total_donations,
+            SUM(units_donated) as total_units_donated
+        FROM blood_donations 
+        WHERE donor_email = (SELECT email FROM users WHERE id = ?) 
+           OR donor_phone = (SELECT phone FROM patients WHERE user_id = ?)
+    ", [$user_id, $user_id])->fetch();
+    
+} else {
+    // Admin/Staff data
+    
+    // Get statistics
+    $stats = $db->query("
+        SELECT 
+            (SELECT COUNT(*) FROM blood_donations) as total_donations,
+            (SELECT COUNT(*) FROM blood_requests) as total_requests,
+            (SELECT COUNT(*) FROM blood_requests WHERE status = 'pending') as pending_requests,
+            (SELECT COUNT(*) FROM blood_requests WHERE urgency_level = 'critical' AND status = 'pending') as critical_requests
+    ")->fetch();
+    
+    $total_donations = $stats['total_donations'] ?? 0;
+    $total_requests = $stats['total_requests'] ?? 0;
+    $pending_requests = $stats['pending_requests'] ?? 0;
+    $critical_requests = $stats['critical_requests'] ?? 0;
+    
+    // Get blood inventory
+    $blood_inventory = $db->query("SELECT * FROM blood_inventory ORDER BY blood_type")->fetchAll();
+    
+    // Get recent donations
+    $recent_donations = $db->query("
+        SELECT bd.*, u.first_name, u.last_name 
+        FROM blood_donations bd 
+        LEFT JOIN users u ON bd.recorded_by = u.id 
+        ORDER BY bd.donation_date DESC 
+        LIMIT 10
+    ")->fetchAll();
+    
+    // Get blood requests
+    $blood_requests = $db->query("
+        SELECT br.*, p.first_name, p.last_name, p.patient_id,
+               u1.first_name as requested_by_first, u1.last_name as requested_by_last,
+               u2.first_name as fulfilled_by_first, u2.last_name as fulfilled_by_last
+        FROM blood_requests br 
+        LEFT JOIN patients p ON br.patient_id = p.id 
+        LEFT JOIN users u1 ON br.requested_by = u1.id 
+        LEFT JOIN users u2 ON br.fulfilled_by = u2.id 
+        ORDER BY br.created_at DESC 
+        LIMIT 20
+    ")->fetchAll();
+    
+    // Get all patients for dropdown
+    $patients = $db->query("SELECT id, patient_id, first_name, last_name FROM patients ORDER BY first_name, last_name")->fetchAll();
+}
 ?>
 
 <!DOCTYPE html>
@@ -178,7 +259,7 @@ $patients = $db->query("SELECT id, patient_id, first_name, last_name FROM patien
                             <?php foreach (['A+', 'A-', 'B+', 'B-', 'AB+', 'AB-', 'O+', 'O-'] as $blood_type): ?>
                                 <?php 
                                 $units = 0;
-                                foreach ($inventory as $item) {
+                                foreach ($blood_inventory as $item) {
                                     if ($item['blood_type'] === $blood_type) {
                                         $units = $item['units_available'];
                                         break;
