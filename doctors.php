@@ -148,6 +148,8 @@ $doctors = $db->query($doctors_query, $params)->fetchAll();
                 <li><a href="staff.php"><i class="fas fa-user-tie"></i> Staff</a></li>
                 <li><a href="equipment.php"><i class="fas fa-tools"></i> Equipment</a></li>
                 <li><a href="reports.php"><i class="fas fa-chart-bar"></i> Reports</a></li>
+                <li><a href="blood-bank.php"><i class="fas fa-tint"></i> Blood Bank</a></li>
+                <li><a href="organ-donation.php"><i class="fas fa-heart"></i> Organ Donation</a></li>
                 <li><a href="logout.php"><i class="fas fa-sign-out-alt"></i> Logout</a></li>
             </ul>
         </aside>

@@ -309,6 +309,8 @@ try {
                     <li><a href="settings.php"><i class="fas fa-cog"></i> Settings</a></li>
                 <?php endif; ?>
                 
+                <li><a href="blood-bank.php"><i class="fas fa-tint"></i> Blood Bank</a></li>
+                <li><a href="organ-donation.php"><i class="fas fa-heart"></i> Organ Donation</a></li>
                 <li><a href="logout.php"><i class="fas fa-sign-out-alt"></i> Logout</a></li>
             </ul>
         </aside>
