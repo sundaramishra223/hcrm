@@ -1,7 +1,7 @@
 -- ============================================================================
 -- HOSPITAL CRM - COMPLETE DATABASE SCHEMA
 -- ============================================================================
--- Version: 3.0 (Complete Blood Bank & Organ Donation Management Systems)
+-- Version: 3.1 (Complete Blood Bank & Organ Donation Management Systems)
 -- Created: 2024
 -- Features: Patient Management, Doctor Management, Appointments, Billing, 
 --          Insurance, Pharmacy, Laboratory, Prescriptions, Equipment, Staff,
