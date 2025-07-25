@@ -3,1086 +3,829 @@ session_start();
 require_once 'config/database.php';
 require_once 'includes/functions.php';
 
-// Check if user is logged in and has permission
+// Check if user is logged in
 if (!isset($_SESSION['user_id'])) {
     header('Location: index.php');
     exit;
 }
 
-$user_role = $_SESSION['role'];
-if (!in_array($user_role, ['admin', 'doctor', 'nurse', 'receptionist', 'patient'])) {
-    header('Location: dashboard.php');
-    exit;
-}
-
 $db = new Database();
+$user_role = $_SESSION['role'];
 $user_id = $_SESSION['user_id'];
 
 // Handle form submissions
-$success_message = '';
-$error_message = '';
-
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
-    $action = $_POST['action'] ?? '';
-    
-    switch ($action) {
-        case 'register_donor':
-            if (in_array($user_role, ['admin', 'doctor', 'nurse', 'receptionist', 'patient'])) {
-                $donor_id = 'OD' . date('Ymd') . sprintf('%04d', rand(1000, 9999));
-                $patient_id = $_POST['patient_id'] ?? null;
-                $donor_name = $_POST['donor_name'];
-                $phone = $_POST['phone'];
-                $email = $_POST['email'] ?? null;
-                $date_of_birth = $_POST['date_of_birth'];
-                $gender = $_POST['gender'];
-                $blood_group = $_POST['blood_group'];
-                $address = $_POST['address'];
-                $organs_to_donate = $_POST['organs_to_donate'] ?? [];
-                $medical_history = $_POST['medical_history'] ?? '';
-                $consent_type = $_POST['consent_type'];
-                $emergency_contact = $_POST['emergency_contact'];
-                $emergency_phone = $_POST['emergency_phone'];
-                
-                try {
-                    $db->query("
-                        INSERT INTO organ_donors (donor_id, patient_id, donor_name, phone, email, date_of_birth, 
-                                                gender, blood_group, address, organs_to_donate, medical_history, 
-                                                consent_type, emergency_contact_name, emergency_contact_phone, 
-                                                status, is_active, created_by, created_at) 
-                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'registered', 1, ?, NOW())
-                    ", [$donor_id, $patient_id, $donor_name, $phone, $email, $date_of_birth, $gender, 
-                        $blood_group, $address, implode(',', $organs_to_donate), $medical_history, 
-                        $consent_type, $emergency_contact, $emergency_phone, $user_id]);
+    if (isset($_POST['action'])) {
+        switch ($_POST['action']) {
+            case 'register_donor':
+                if (in_array($user_role, ['admin', 'doctor', 'nurse', 'patient'])) {
+                    $patient_id = $user_role === 'patient' ? 
+                        $db->prepare("SELECT id FROM patients WHERE user_id = ?")->execute([$user_id])->fetch()['id'] : 
+                        $_POST['patient_id'];
                     
-                    $success_message = "Organ donor registered successfully! Donor ID: $donor_id";
-                } catch (Exception $e) {
-                    $error_message = "Error registering donor: " . $e->getMessage();
-                }
-            }
-            break;
-            
-        case 'record_donation':
-            if (in_array($user_role, ['admin', 'doctor'])) {
-                $donation_id = 'ODON' . date('Ymd') . sprintf('%04d', rand(1000, 9999));
-                $donor_id = $_POST['donor_id'];
-                $organ_type = $_POST['organ_type'];
-                $donation_date = $_POST['donation_date'];
-                $donation_time = $_POST['donation_time'];
-                $hospital_name = $_POST['hospital_name'];
-                $surgeon_name = $_POST['surgeon_name'];
-                $organ_condition = $_POST['organ_condition'];
-                $preservation_method = $_POST['preservation_method'];
-                $notes = $_POST['notes'] ?? '';
-                
-                try {
-                    // Record donation
-                    $db->query("
-                        INSERT INTO organ_donations (donation_id, donor_id, organ_type, donation_date, donation_time, 
-                                                   hospital_name, surgeon_name, organ_condition, preservation_method, 
-                                                   status, notes, recorded_by, created_at) 
-                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'harvested', ?, ?, NOW())
-                    ", [$donation_id, $donor_id, $organ_type, $donation_date, $donation_time, 
-                        $hospital_name, $surgeon_name, $organ_condition, $preservation_method, $notes, $user_id]);
+                    $organs = $_POST['organs'] ?? [];
+                    $medical_history = $_POST['medical_history'];
+                    $emergency_contact = $_POST['emergency_contact'];
+                    $emergency_phone = $_POST['emergency_phone'];
+                    $consent_date = $_POST['consent_date'];
+                    $notes = $_POST['notes'];
                     
-                    // Update organ inventory
-                    $existing = $db->query("SELECT * FROM organ_inventory WHERE organ_type = ?", [$organ_type])->fetch();
-                    if ($existing) {
-                        $db->query("
-                            UPDATE organ_inventory 
-                            SET organs_available = organs_available + 1, last_updated = NOW() 
-                            WHERE organ_type = ?
-                        ", [$organ_type]);
-                    } else {
-                        $db->query("
-                            INSERT INTO organ_inventory (organ_type, organs_available, organs_allocated, last_updated) 
-                            VALUES (?, 1, 0, NOW())
-                        ", [$organ_type]);
+                    // Insert donor registration
+                    $stmt = $db->prepare("INSERT INTO organ_donors (patient_id, medical_history, emergency_contact_name, emergency_contact_phone, consent_date, notes, status, registered_by) VALUES (?, ?, ?, ?, ?, ?, 'active', ?)");
+                    $stmt->execute([$patient_id, $medical_history, $emergency_contact, $emergency_phone, $consent_date, $notes, $user_id]);
+                    
+                    $donor_id = $db->lastInsertId();
+                    
+                    // Insert organ consents
+                    foreach ($organs as $organ) {
+                        $stmt = $db->prepare("INSERT INTO organ_consents (donor_id, organ_type, consent_status) VALUES (?, ?, 'active')");
+                        $stmt->execute([$donor_id, $organ]);
                     }
                     
-                    $success_message = "Organ donation recorded successfully! Donation ID: $donation_id";
-                } catch (Exception $e) {
-                    $error_message = "Error recording donation: " . $e->getMessage();
+                    $_SESSION['success'] = "Organ donor registration completed successfully!";
                 }
-            }
-            break;
-            
-        case 'request_organ':
-            $request_id = 'OREQ' . date('Ymd') . sprintf('%04d', rand(1000, 9999));
-            $patient_id = $_POST['patient_id'];
-            $organ_type = $_POST['organ_type'];
-            $blood_group = $_POST['blood_group'];
-            $urgency = $_POST['urgency'];
-            $medical_condition = $_POST['medical_condition'];
-            $doctor_id = $_POST['doctor_id'] ?? null;
-            $required_date = $_POST['required_date'];
-            $medical_notes = $_POST['medical_notes'] ?? '';
-            
-            try {
-                $db->query("
-                    INSERT INTO organ_requests (request_id, patient_id, organ_type, blood_group, urgency, 
-                                              medical_condition, doctor_id, required_date, medical_notes, 
-                                              status, requested_by, created_at) 
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', ?, NOW())
-                ", [$request_id, $patient_id, $organ_type, $blood_group, $urgency, $medical_condition, 
-                    $doctor_id, $required_date, $medical_notes, $user_id]);
+                break;
                 
-                $success_message = "Organ request submitted successfully! Request ID: $request_id";
-            } catch (Exception $e) {
-                $error_message = "Error submitting organ request: " . $e->getMessage();
-            }
-            break;
-            
-        case 'update_request_status':
-            if (in_array($user_role, ['admin', 'doctor'])) {
-                $request_id = $_POST['request_id'];
-                $status = $_POST['status'];
-                $notes = $_POST['notes'] ?? '';
-                
-                try {
-                    $db->query("
-                        UPDATE organ_requests 
-                        SET status = ?, notes = ?, updated_by = ?, updated_at = NOW() 
-                        WHERE id = ?
-                    ", [$status, $notes, $user_id, $request_id]);
+            case 'add_recipient':
+                if (in_array($user_role, ['admin', 'doctor'])) {
+                    $patient_id = $_POST['patient_id'];
+                    $organ_needed = $_POST['organ_needed'];
+                    $priority_level = $_POST['priority_level'];
+                    $blood_type = $_POST['blood_type'];
+                    $medical_condition = $_POST['medical_condition'];
+                    $doctor_notes = $_POST['doctor_notes'];
+                    $required_by = $_POST['required_by'];
                     
-                    // If approved, update inventory
-                    if ($status === 'approved') {
-                        $request = $db->query("SELECT * FROM organ_requests WHERE id = ?", [$request_id])->fetch();
-                        if ($request) {
-                            $db->query("
-                                UPDATE organ_inventory 
-                                SET organs_available = organs_available - 1, 
-                                    organs_allocated = organs_allocated + 1 
-                                WHERE organ_type = ?
-                            ", [$request['organ_type']]);
-                        }
-                    }
+                    $stmt = $db->prepare("INSERT INTO organ_recipients (patient_id, organ_needed, priority_level, blood_type, medical_condition, doctor_notes, required_by_date, status, added_by) VALUES (?, ?, ?, ?, ?, ?, ?, 'waiting', ?)");
+                    $stmt->execute([$patient_id, $organ_needed, $priority_level, $blood_type, $medical_condition, $doctor_notes, $required_by, $user_id]);
                     
-                    $success_message = "Organ request status updated successfully!";
-                } catch (Exception $e) {
-                    $error_message = "Error updating request status: " . $e->getMessage();
+                    $_SESSION['success'] = "Recipient added to waiting list successfully!";
                 }
-            }
-            break;
+                break;
+                
+            case 'update_recipient_status':
+                if (in_array($user_role, ['admin', 'doctor'])) {
+                    $recipient_id = $_POST['recipient_id'];
+                    $status = $_POST['status'];
+                    $notes = $_POST['notes'];
+                    
+                    $stmt = $db->prepare("UPDATE organ_recipients SET status = ?, updated_notes = ?, updated_at = NOW() WHERE id = ?");
+                    $stmt->execute([$status, $notes, $recipient_id]);
+                    
+                    $_SESSION['success'] = "Recipient status updated successfully!";
+                }
+                break;
+                
+            case 'record_transplant':
+                if (in_array($user_role, ['admin', 'doctor'])) {
+                    $donor_id = $_POST['donor_id'];
+                    $recipient_id = $_POST['recipient_id'];
+                    $organ_type = $_POST['organ_type'];
+                    $transplant_date = $_POST['transplant_date'];
+                    $surgeon_id = $_POST['surgeon_id'];
+                    $hospital = $_POST['hospital'];
+                    $surgery_notes = $_POST['surgery_notes'];
+                    
+                    $stmt = $db->prepare("INSERT INTO organ_transplants (donor_id, recipient_id, organ_type, transplant_date, surgeon_id, hospital, surgery_notes, status, recorded_by) VALUES (?, ?, ?, ?, ?, ?, ?, 'completed', ?)");
+                    $stmt->execute([$donor_id, $recipient_id, $organ_type, $transplant_date, $surgeon_id, $hospital, $surgery_notes, $user_id]);
+                    
+                    // Update recipient status
+                    $stmt = $db->prepare("UPDATE organ_recipients SET status = 'transplanted', transplant_date = ? WHERE id = ?");
+                    $stmt->execute([$transplant_date, $recipient_id]);
+                    
+                    // Update donor organ status
+                    $stmt = $db->prepare("UPDATE organ_consents SET consent_status = 'used' WHERE donor_id = ? AND organ_type = ?");
+                    $stmt->execute([$donor_id, $organ_type]);
+                    
+                    $_SESSION['success'] = "Transplant recorded successfully!";
+                }
+                break;
+        }
+        header('Location: organ-donation.php');
+        exit;
     }
 }
 
 // Get statistics
-try {
-    $stats = [];
-    
-    // Total donors
-    $result = $db->query("SELECT COUNT(*) as count FROM organ_donors WHERE is_active = 1")->fetch();
-    $stats['total_donors'] = $result['count'];
-    
-    // Total donations this month
-    $result = $db->query("
-        SELECT COUNT(*) as count FROM organ_donations 
-        WHERE MONTH(donation_date) = MONTH(CURDATE()) AND YEAR(donation_date) = YEAR(CURDATE())
-    ")->fetch();
-    $stats['donations_this_month'] = $result['count'];
-    
-    // Pending requests
-    $result = $db->query("SELECT COUNT(*) as count FROM organ_requests WHERE status = 'pending'")->fetch();
-    $stats['pending_requests'] = $result['count'];
-    
-    // Total organs available
-    $result = $db->query("SELECT SUM(organs_available) as total FROM organ_inventory")->fetch();
-    $stats['total_organs'] = $result['total'] ?? 0;
-    
-} catch (Exception $e) {
-    $stats = ['total_donors' => 0, 'donations_this_month' => 0, 'pending_requests' => 0, 'total_organs' => 0];
-}
+$stats = [];
 
-// Get organ inventory
-try {
-    $inventory = $db->query("
-        SELECT *, 
-               CASE 
-                   WHEN organs_available = 0 THEN 'critical'
-                   WHEN organs_available < 3 THEN 'low'
-                   ELSE 'normal'
-               END as stock_status
-        FROM organ_inventory 
-        ORDER BY organ_type
-    ")->fetchAll();
-} catch (Exception $e) {
-    $inventory = [];
-}
+// Total donors
+$stmt = $db->prepare("SELECT COUNT(*) as total FROM organ_donors WHERE status = 'active'");
+$stmt->execute();
+$stats['total_donors'] = $stmt->fetch()['total'];
 
-// Get recent donations
-try {
-    $recent_donations = $db->query("
-        SELECT od.*, odo.donor_name, odo.phone 
-        FROM organ_donations od
-        LEFT JOIN organ_donors odo ON od.donor_id = odo.id
-        ORDER BY od.donation_date DESC, od.created_at DESC
-        LIMIT 10
-    ")->fetchAll();
-} catch (Exception $e) {
-    $recent_donations = [];
-}
+// Waiting recipients
+$stmt = $db->prepare("SELECT COUNT(*) as waiting FROM organ_recipients WHERE status = 'waiting'");
+$stmt->execute();
+$stats['waiting_recipients'] = $stmt->fetch()['waiting'];
 
-// Get organ requests (role-based)
-try {
-    if ($user_role === 'patient') {
-        $patient_id = $db->query("SELECT id FROM patients WHERE email = (SELECT email FROM users WHERE id = ?)", [$user_id])->fetch()['id'];
-        $organ_requests = $db->query("
-            SELECT or_req.*, p.first_name, p.last_name, d.doctor_name 
-            FROM organ_requests or_req
-            LEFT JOIN patients p ON or_req.patient_id = p.id
-            LEFT JOIN doctors d ON or_req.doctor_id = d.id
-            WHERE or_req.patient_id = ?
-            ORDER BY or_req.created_at DESC
-        ", [$patient_id])->fetchAll();
-    } else {
-        $organ_requests = $db->query("
-            SELECT or_req.*, p.first_name, p.last_name, d.doctor_name 
-            FROM organ_requests or_req
-            LEFT JOIN patients p ON or_req.patient_id = p.id
-            LEFT JOIN doctors d ON or_req.doctor_id = d.id
-            ORDER BY or_req.created_at DESC
-            LIMIT 20
-        ")->fetchAll();
-    }
-} catch (Exception $e) {
-    $organ_requests = [];
-}
+// Successful transplants
+$stmt = $db->prepare("SELECT COUNT(*) as completed FROM organ_transplants WHERE status = 'completed'");
+$stmt->execute();
+$stats['completed_transplants'] = $stmt->fetch()['completed'];
+
+// Available organs
+$stmt = $db->prepare("SELECT COUNT(*) as available FROM organ_consents WHERE consent_status = 'active'");
+$stmt->execute();
+$stats['available_organs'] = $stmt->fetch()['available'];
+
+// Get organ availability by type
+$stmt = $db->prepare("
+    SELECT organ_type, COUNT(*) as count 
+    FROM organ_consents 
+    WHERE consent_status = 'active' 
+    GROUP BY organ_type
+");
+$stmt->execute();
+$organ_availability = $stmt->fetchAll();
 
 // Get donors
-try {
-    $donors = $db->query("
-        SELECT * FROM organ_donors 
-        WHERE is_active = 1 
-        ORDER BY created_at DESC 
-        LIMIT 20
-    ")->fetchAll();
-} catch (Exception $e) {
-    $donors = [];
+if (in_array($user_role, ['admin', 'doctor', 'nurse'])) {
+    $stmt = $db->prepare("
+        SELECT od.*, p.first_name, p.last_name, p.patient_id, p.blood_type,
+               GROUP_CONCAT(oc.organ_type) as organs
+        FROM organ_donors od 
+        JOIN patients p ON od.patient_id = p.id 
+        LEFT JOIN organ_consents oc ON od.id = oc.donor_id AND oc.consent_status = 'active'
+        WHERE od.status = 'active'
+        GROUP BY od.id
+        ORDER BY od.consent_date DESC
+    ");
+    $stmt->execute();
+    $donors = $stmt->fetchAll();
+} else {
+    // Patient can only see their own donor registration
+    $stmt = $db->prepare("
+        SELECT od.*, p.first_name, p.last_name, p.patient_id, p.blood_type,
+               GROUP_CONCAT(oc.organ_type) as organs
+        FROM organ_donors od 
+        JOIN patients p ON od.patient_id = p.id 
+        LEFT JOIN organ_consents oc ON od.id = oc.donor_id AND oc.consent_status = 'active'
+        WHERE od.status = 'active' AND p.user_id = ?
+        GROUP BY od.id
+        ORDER BY od.consent_date DESC
+    ");
+    $stmt->execute([$user_id]);
+    $donors = $stmt->fetchAll();
 }
 
-// Get patients for dropdowns
-try {
-    $patients = $db->query("SELECT id, patient_id, first_name, last_name FROM patients WHERE is_active = 1 ORDER BY first_name")->fetchAll();
-} catch (Exception $e) {
-    $patients = [];
+// Get recipients
+if (in_array($user_role, ['admin', 'doctor', 'nurse'])) {
+    $stmt = $db->prepare("
+        SELECT or_table.*, p.first_name, p.last_name, p.patient_id, d.doctor_name
+        FROM organ_recipients or_table
+        JOIN patients p ON or_table.patient_id = p.id 
+        LEFT JOIN doctors d ON or_table.added_by = d.user_id
+        ORDER BY or_table.priority_level DESC, or_table.created_at ASC
+    ");
+    $stmt->execute();
+    $recipients = $stmt->fetchAll();
+} else {
+    // Patient can only see their own recipient records
+    $stmt = $db->prepare("
+        SELECT or_table.*, p.first_name, p.last_name, p.patient_id, d.doctor_name
+        FROM organ_recipients or_table
+        JOIN patients p ON or_table.patient_id = p.id 
+        LEFT JOIN doctors d ON or_table.added_by = d.user_id
+        WHERE p.user_id = ?
+        ORDER BY or_table.priority_level DESC, or_table.created_at ASC
+    ");
+    $stmt->execute([$user_id]);
+    $recipients = $stmt->fetchAll();
 }
 
-// Get doctors for dropdowns
-try {
-    $doctors = $db->query("SELECT id, doctor_name FROM doctors WHERE is_active = 1 ORDER BY doctor_name")->fetchAll();
-} catch (Exception $e) {
-    $doctors = [];
-}
+// Get recent transplants
+$stmt = $db->prepare("
+    SELECT ot.*, 
+           pd.first_name as donor_fname, pd.last_name as donor_lname,
+           pr.first_name as recipient_fname, pr.last_name as recipient_lname,
+           d.doctor_name as surgeon_name
+    FROM organ_transplants ot
+    JOIN organ_donors od ON ot.donor_id = od.id
+    JOIN patients pd ON od.patient_id = pd.id
+    JOIN organ_recipients ore ON ot.recipient_id = ore.id
+    JOIN patients pr ON ore.patient_id = pr.id
+    LEFT JOIN doctors d ON ot.surgeon_id = d.id
+    ORDER BY ot.transplant_date DESC
+    LIMIT 10
+");
+$stmt->execute();
+$recent_transplants = $stmt->fetchAll();
 
-// Organ types
-$organ_types = [
-    'heart' => 'Heart',
-    'liver' => 'Liver', 
-    'kidney' => 'Kidney',
-    'lung' => 'Lung',
-    'pancreas' => 'Pancreas',
-    'cornea' => 'Cornea',
-    'skin' => 'Skin',
-    'bone' => 'Bone',
-    'heart_valve' => 'Heart Valve',
-    'blood_vessel' => 'Blood Vessel'
-];
+// Get patients and doctors for dropdowns
+if (in_array($user_role, ['admin', 'doctor', 'nurse'])) {
+    $stmt = $db->prepare("SELECT id, first_name, last_name, patient_id, blood_type FROM patients ORDER BY first_name, last_name");
+    $stmt->execute();
+    $patients = $stmt->fetchAll();
+    
+    $stmt = $db->prepare("SELECT id, doctor_name, specialization FROM doctors ORDER BY doctor_name");
+    $stmt->execute();
+    $doctors = $stmt->fetchAll();
+}
 ?>
+
 <!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Organ Donation Management - Hospital CRM</title>
+    <link rel="stylesheet" href="assets/css/style.css">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
-    <?php renderDynamicStyles(); ?>
 </head>
 <body>
-    <div class="dashboard-container">
+    <div class="wrapper">
         <!-- Sidebar -->
-        <aside class="sidebar">
-            <div class="sidebar-header">
-                <h2><i class="fas fa-heart"></i> Organ Donation</h2>
-            </div>
-            <ul class="sidebar-menu">
-                <li><a href="dashboard.php"><i class="fas fa-home"></i> Dashboard</a></li>
-                
-                <?php if (in_array($user_role, ['admin', 'doctor', 'nurse', 'receptionist'])): ?>
-                    <li><a href="patients.php"><i class="fas fa-users"></i> Patients</a></li>
-                    <li><a href="appointments.php"><i class="fas fa-calendar-alt"></i> Appointments</a></li>
-                <?php endif; ?>
-                
-                <?php if (in_array($user_role, ['admin', 'doctor'])): ?>
-                    <li><a href="doctors.php"><i class="fas fa-user-md"></i> Doctors</a></li>
-                <?php endif; ?>
-                
-                <?php if (in_array($user_role, ['admin', 'receptionist'])): ?>
-                    <li><a href="billing.php"><i class="fas fa-file-invoice-dollar"></i> Billing</a></li>
-                    <li><a href="insurance.php"><i class="fas fa-shield-alt"></i> Insurance</a></li>
-                <?php endif; ?>
-                
-                <?php if (in_array($user_role, ['admin', 'doctor', 'nurse'])): ?>
-                    <li><a href="laboratory.php"><i class="fas fa-flask"></i> Laboratory</a></li>
-                    <li><a href="prescriptions.php"><i class="fas fa-prescription-bottle-alt"></i> Prescriptions</a></li>
-                <?php endif; ?>
-                
-                <?php if (in_array($user_role, ['admin', 'pharmacy_staff'])): ?>
-                    <li><a href="pharmacy.php"><i class="fas fa-pills"></i> Pharmacy</a></li>
-                <?php endif; ?>
-                
-                <li><a href="blood-bank.php"><i class="fas fa-tint"></i> Blood Bank</a></li>
-                <li><a href="organ-donation.php" class="active"><i class="fas fa-heart"></i> Organ Donation</a></li>
-                
-                <?php if ($user_role === 'patient'): ?>
-                    <li><a href="patient-portal.php"><i class="fas fa-user-circle"></i> My Portal</a></li>
-                <?php endif; ?>
-                
-                <?php if (in_array($user_role, ['admin'])): ?>
-                    <li><a href="staff.php"><i class="fas fa-user-tie"></i> Staff</a></li>
-                    <li><a href="equipment.php"><i class="fas fa-tools"></i> Equipment</a></li>
-                    <li><a href="reports.php"><i class="fas fa-chart-bar"></i> Reports</a></li>
-                    <li><a href="settings.php"><i class="fas fa-cog"></i> Settings</a></li>
-                <?php endif; ?>
-                
-                <li><a href="logout.php"><i class="fas fa-sign-out-alt"></i> Logout</a></li>
-            </ul>
-        </aside>
+        <?php include 'includes/sidebar.php'; ?>
 
         <!-- Main Content -->
-        <main class="main-content">
-            <div class="header">
-                <div>
+        <div class="main-content">
+            <!-- Header -->
+            <?php include 'includes/header.php'; ?>
+
+            <!-- Page Content -->
+            <div class="page-content">
+                <div class="page-header">
                     <h1><i class="fas fa-heart"></i> Organ Donation Management</h1>
-                    <p>Manage organ donations, inventory, and transplant requests</p>
+                    <div class="page-actions">
+                        <?php if (in_array($user_role, ['admin', 'doctor', 'nurse', 'patient'])): ?>
+                            <button class="btn btn-primary" onclick="openModal('registerDonorModal')">
+                                <i class="fas fa-plus"></i> Register as Donor
+                            </button>
+                        <?php endif; ?>
+                        <?php if (in_array($user_role, ['admin', 'doctor'])): ?>
+                            <button class="btn btn-warning" onclick="openModal('addRecipientModal')">
+                                <i class="fas fa-user-plus"></i> Add Recipient
+                            </button>
+                            <button class="btn btn-success" onclick="openModal('recordTransplantModal')">
+                                <i class="fas fa-heart-pulse"></i> Record Transplant
+                            </button>
+                        <?php endif; ?>
+                    </div>
                 </div>
-                
-                <div class="header-actions">
-                    <button class="btn btn-primary" onclick="showRegisterDonorModal()">
-                        <i class="fas fa-plus"></i> Register Donor
-                    </button>
-                    <?php if (in_array($user_role, ['admin', 'doctor'])): ?>
-                        <button class="btn btn-success" onclick="showRecordDonationModal()">
-                            <i class="fas fa-heart"></i> Record Donation
-                        </button>
-                    <?php endif; ?>
-                    <button class="btn btn-danger" onclick="showRequestOrganModal()">
-                        <i class="fas fa-hand-holding-medical"></i> Request Organ
-                    </button>
-                </div>
-            </div>
 
-            <!-- Alert Messages -->
-            <?php if ($success_message): ?>
-                <div class="alert alert-success">
-                    <i class="fas fa-check-circle"></i> <?php echo htmlspecialchars($success_message); ?>
-                </div>
-            <?php endif; ?>
+                <?php if (isset($_SESSION['success'])): ?>
+                    <div class="alert alert-success">
+                        <?php echo $_SESSION['success']; unset($_SESSION['success']); ?>
+                    </div>
+                <?php endif; ?>
 
-            <?php if ($error_message): ?>
-                <div class="alert alert-danger">
-                    <i class="fas fa-exclamation-circle"></i> <?php echo htmlspecialchars($error_message); ?>
+                <!-- Statistics Cards -->
+                <div class="stats-grid">
+                    <div class="stat-card">
+                        <div class="stat-icon">
+                            <i class="fas fa-users"></i>
+                        </div>
+                        <div class="stat-content">
+                            <h3><?php echo $stats['total_donors']; ?></h3>
+                            <p>Active Donors</p>
+                        </div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-icon">
+                            <i class="fas fa-clock"></i>
+                        </div>
+                        <div class="stat-content">
+                            <h3><?php echo $stats['waiting_recipients']; ?></h3>
+                            <p>Waiting Recipients</p>
+                        </div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-icon">
+                            <i class="fas fa-heart-pulse"></i>
+                        </div>
+                        <div class="stat-content">
+                            <h3><?php echo $stats['completed_transplants']; ?></h3>
+                            <p>Successful Transplants</p>
+                        </div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-icon">
+                            <i class="fas fa-heart"></i>
+                        </div>
+                        <div class="stat-content">
+                            <h3><?php echo $stats['available_organs']; ?></h3>
+                            <p>Available Organs</p>
+                        </div>
+                    </div>
                 </div>
-            <?php endif; ?>
 
-            <!-- Statistics Cards -->
-            <div class="stats-grid">
-                <div class="stat-card">
-                    <div class="stat-icon">
-                        <i class="fas fa-users"></i>
-                    </div>
-                    <div class="stat-info">
-                        <h3><?php echo $stats['total_donors']; ?></h3>
-                        <p>Total Donors</p>
-                    </div>
-                </div>
-                <div class="stat-card">
-                    <div class="stat-icon">
-                        <i class="fas fa-heart"></i>
-                    </div>
-                    <div class="stat-info">
-                        <h3><?php echo $stats['donations_this_month']; ?></h3>
-                        <p>Donations This Month</p>
-                    </div>
-                </div>
-                <div class="stat-card">
-                    <div class="stat-icon">
-                        <i class="fas fa-clock"></i>
-                    </div>
-                    <div class="stat-info">
-                        <h3><?php echo $stats['pending_requests']; ?></h3>
-                        <p>Pending Requests</p>
-                    </div>
-                </div>
-                <div class="stat-card">
-                    <div class="stat-icon">
-                        <i class="fas fa-warehouse"></i>
-                    </div>
-                    <div class="stat-info">
-                        <h3><?php echo $stats['total_organs']; ?></h3>
-                        <p>Organs Available</p>
-                    </div>
-                </div>
-            </div>
-
-            <!-- Organ Inventory -->
-            <div class="card">
-                <div class="card-header">
-                    <h3><i class="fas fa-warehouse"></i> Organ Inventory</h3>
-                </div>
-                <div class="card-body">
-                    <?php if (empty($inventory)): ?>
-                        <p class="text-muted text-center">No organ inventory data available.</p>
-                    <?php else: ?>
-                        <div class="inventory-grid">
-                            <?php foreach ($inventory as $item): ?>
-                                <div class="inventory-card <?php echo $item['stock_status']; ?>">
-                                    <div class="organ-type">
-                                        <i class="fas fa-heart"></i>
-                                        <?php echo htmlspecialchars(ucfirst(str_replace('_', ' ', $item['organ_type']))); ?>
-                                    </div>
-                                    <div class="organs-info">
-                                        <div class="available"><?php echo $item['organs_available']; ?> Available</div>
-                                        <div class="allocated">Allocated: <?php echo $item['organs_allocated']; ?></div>
-                                    </div>
-                                    <div class="status-badge">
-                                        <?php if ($item['stock_status'] === 'critical'): ?>
-                                            <span class="badge badge-danger">Critical</span>
-                                        <?php elseif ($item['stock_status'] === 'low'): ?>
-                                            <span class="badge badge-warning">Low Stock</span>
-                                        <?php else: ?>
-                                            <span class="badge badge-success">Available</span>
-                                        <?php endif; ?>
-                                    </div>
-                                    <div class="update-info">
-                                        <small>Updated: <?php echo date('d M Y', strtotime($item['last_updated'])); ?></small>
-                                    </div>
+                <!-- Organ Availability -->
+                <div class="content-section">
+                    <h2><i class="fas fa-chart-pie"></i> Organ Availability</h2>
+                    <div class="organ-availability-grid">
+                        <?php 
+                        $organ_types = ['Heart', 'Liver', 'Kidney', 'Lung', 'Pancreas', 'Cornea', 'Skin', 'Bone'];
+                        foreach ($organ_types as $type): 
+                            $count = 0;
+                            foreach ($organ_availability as $avail) {
+                                if ($avail['organ_type'] === $type) {
+                                    $count = $avail['count'];
+                                    break;
+                                }
+                            }
+                        ?>
+                            <div class="organ-card">
+                                <div class="organ-icon">
+                                    <i class="fas fa-heart"></i>
                                 </div>
-                            <?php endforeach; ?>
-                        </div>
-                    <?php endif; ?>
+                                <div class="organ-info">
+                                    <h3><?php echo $type; ?></h3>
+                                    <p><strong><?php echo $count; ?></strong> Available</p>
+                                </div>
+                            </div>
+                        <?php endforeach; ?>
+                    </div>
                 </div>
-            </div>
 
-            <!-- Organ Requests -->
-            <div class="card">
-                <div class="card-header">
-                    <h3><i class="fas fa-hand-holding-medical"></i> 
-                        <?php echo $user_role === 'patient' ? 'My Organ Requests' : 'Organ Requests'; ?>
-                    </h3>
-                </div>
-                <div class="card-body">
-                    <?php if (empty($organ_requests)): ?>
-                        <p class="text-muted text-center">No organ requests found.</p>
-                    <?php else: ?>
-                        <div style="overflow-x: auto;">
-                            <table class="table">
-                                <thead>
+                <!-- Recipients Waiting List -->
+                <div class="content-section">
+                    <h2><i class="fas fa-list"></i> Recipients Waiting List</h2>
+                    <div class="table-container">
+                        <table class="data-table">
+                            <thead>
+                                <tr>
+                                    <th>Patient</th>
+                                    <th>Organ Needed</th>
+                                    <th>Blood Type</th>
+                                    <th>Priority</th>
+                                    <th>Medical Condition</th>
+                                    <th>Required By</th>
+                                    <th>Status</th>
+                                    <th>Wait Time</th>
+                                    <?php if (in_array($user_role, ['admin', 'doctor'])): ?>
+                                        <th>Actions</th>
+                                    <?php endif; ?>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <?php foreach ($recipients as $recipient): ?>
                                     <tr>
-                                        <th>Request ID</th>
-                                        <?php if ($user_role !== 'patient'): ?>
-                                            <th>Patient</th>
-                                        <?php endif; ?>
-                                        <th>Organ Type</th>
-                                        <th>Blood Group</th>
-                                        <th>Urgency</th>
-                                        <th>Required Date</th>
-                                        <th>Status</th>
+                                        <td><?php echo htmlspecialchars($recipient['first_name'] . ' ' . $recipient['last_name']); ?></td>
+                                        <td><span class="organ-badge"><?php echo $recipient['organ_needed']; ?></span></td>
+                                        <td><span class="blood-type-badge"><?php echo $recipient['blood_type']; ?></span></td>
+                                        <td>
+                                            <span class="priority-badge priority-<?php echo $recipient['priority_level']; ?>">
+                                                <?php echo ucfirst($recipient['priority_level']); ?>
+                                            </span>
+                                        </td>
+                                        <td><?php echo htmlspecialchars($recipient['medical_condition']); ?></td>
+                                        <td><?php echo date('M d, Y', strtotime($recipient['required_by_date'])); ?></td>
+                                        <td>
+                                            <span class="status-badge status-<?php echo $recipient['status']; ?>">
+                                                <?php echo ucfirst($recipient['status']); ?>
+                                            </span>
+                                        </td>
+                                        <td>
+                                            <?php
+                                            $wait_days = (time() - strtotime($recipient['created_at'])) / (60 * 60 * 24);
+                                            echo floor($wait_days) . ' days';
+                                            ?>
+                                        </td>
                                         <?php if (in_array($user_role, ['admin', 'doctor'])): ?>
-                                            <th>Actions</th>
+                                            <td>
+                                                <?php if ($recipient['status'] === 'waiting'): ?>
+                                                    <button class="btn btn-sm btn-success" onclick="updateRecipientStatus(<?php echo $recipient['id']; ?>, 'matched')">
+                                                        <i class="fas fa-check"></i> Match
+                                                    </button>
+                                                <?php endif; ?>
+                                            </td>
                                         <?php endif; ?>
                                     </tr>
-                                </thead>
-                                <tbody>
-                                    <?php foreach ($organ_requests as $request): ?>
-                                        <tr>
-                                            <td><?php echo htmlspecialchars($request['request_id']); ?></td>
-                                            <?php if ($user_role !== 'patient'): ?>
-                                                <td><?php echo htmlspecialchars($request['first_name'] . ' ' . $request['last_name']); ?></td>
-                                            <?php endif; ?>
-                                            <td>
-                                                <span class="organ-badge">
-                                                    <i class="fas fa-heart"></i>
-                                                    <?php echo htmlspecialchars(ucfirst(str_replace('_', ' ', $request['organ_type']))); ?>
-                                                </span>
-                                            </td>
-                                            <td><span class="blood-group-badge"><?php echo htmlspecialchars($request['blood_group']); ?></span></td>
-                                            <td>
-                                                <span class="badge badge-<?php echo $request['urgency'] === 'critical' ? 'danger' : ($request['urgency'] === 'high' ? 'warning' : 'info'); ?>">
-                                                    <?php echo ucfirst($request['urgency']); ?>
-                                                </span>
-                                            </td>
-                                            <td><?php echo date('d M Y', strtotime($request['required_date'])); ?></td>
-                                            <td>
-                                                <span class="badge badge-<?php echo $request['status'] === 'approved' ? 'success' : ($request['status'] === 'rejected' ? 'danger' : 'warning'); ?>">
-                                                    <?php echo ucfirst($request['status']); ?>
-                                                </span>
-                                            </td>
-                                            <?php if (in_array($user_role, ['admin', 'doctor'])): ?>
-                                                <td>
-                                                    <?php if ($request['status'] === 'pending'): ?>
-                                                        <button class="btn btn-sm btn-success" onclick="updateRequestStatus(<?php echo $request['id']; ?>, 'approved')">
-                                                            <i class="fas fa-check"></i> Approve
-                                                        </button>
-                                                        <button class="btn btn-sm btn-danger" onclick="updateRequestStatus(<?php echo $request['id']; ?>, 'rejected')">
-                                                            <i class="fas fa-times"></i> Reject
-                                                        </button>
-                                                    <?php else: ?>
-                                                        <span class="text-muted">-</span>
-                                                    <?php endif; ?>
-                                                </td>
-                                            <?php endif; ?>
-                                        </tr>
-                                    <?php endforeach; ?>
-                                </tbody>
-                            </table>
-                        </div>
-                    <?php endif; ?>
-                </div>
-            </div>
-
-            <?php if (in_array($user_role, ['admin', 'doctor', 'nurse'])): ?>
-            <!-- Recent Donations -->
-            <div class="card">
-                <div class="card-header">
-                    <h3><i class="fas fa-history"></i> Recent Donations</h3>
-                </div>
-                <div class="card-body">
-                    <?php if (empty($recent_donations)): ?>
-                        <p class="text-muted text-center">No donations recorded yet.</p>
-                    <?php else: ?>
-                        <div style="overflow-x: auto;">
-                            <table class="table">
-                                <thead>
-                                    <tr>
-                                        <th>Donation ID</th>
-                                        <th>Donor</th>
-                                        <th>Organ Type</th>
-                                        <th>Date</th>
-                                        <th>Hospital</th>
-                                        <th>Condition</th>
-                                        <th>Status</th>
-                                    </tr>
-                                </thead>
-                                <tbody>
-                                    <?php foreach ($recent_donations as $donation): ?>
-                                        <tr>
-                                            <td><?php echo htmlspecialchars($donation['donation_id']); ?></td>
-                                            <td>
-                                                <?php echo htmlspecialchars($donation['donor_name']); ?><br>
-                                                <small><?php echo htmlspecialchars($donation['phone']); ?></small>
-                                            </td>
-                                            <td>
-                                                <span class="organ-badge">
-                                                    <i class="fas fa-heart"></i>
-                                                    <?php echo htmlspecialchars(ucfirst(str_replace('_', ' ', $donation['organ_type']))); ?>
-                                                </span>
-                                            </td>
-                                            <td><?php echo date('d M Y', strtotime($donation['donation_date'])); ?></td>
-                                            <td><?php echo htmlspecialchars($donation['hospital_name']); ?></td>
-                                            <td>
-                                                <span class="badge badge-<?php echo $donation['organ_condition'] === 'excellent' ? 'success' : ($donation['organ_condition'] === 'good' ? 'info' : 'warning'); ?>">
-                                                    <?php echo ucfirst($donation['organ_condition']); ?>
-                                                </span>
-                                            </td>
-                                            <td>
-                                                <span class="badge badge-<?php echo $donation['status'] === 'harvested' ? 'success' : 'warning'; ?>">
-                                                    <?php echo ucfirst($donation['status']); ?>
-                                                </span>
-                                            </td>
-                                        </tr>
-                                    <?php endforeach; ?>
-                                </tbody>
-                            </table>
-                        </div>
-                    <?php endif; ?>
-                </div>
-            </div>
-            <?php endif; ?>
-        </main>
-    </div>
-
-    <!-- Modals -->
-    <!-- Register Donor Modal -->
-    <div id="registerDonorModal" class="modal">
-        <div class="modal-content">
-            <div class="modal-header">
-                <h2><i class="fas fa-user-plus"></i> Register Organ Donor</h2>
-                <span class="close" onclick="hideRegisterDonorModal()">&times;</span>
-            </div>
-            <form method="POST">
-                <input type="hidden" name="action" value="register_donor">
-                <div class="modal-body">
-                    <div class="form-row">
-                        <div class="form-group">
-                            <label for="patient_id">Patient (Optional)</label>
-                            <select name="patient_id" class="form-control">
-                                <option value="">Select Patient (if existing)</option>
-                                <?php foreach ($patients as $patient): ?>
-                                    <option value="<?php echo $patient['id']; ?>">
-                                        <?php echo htmlspecialchars($patient['patient_id'] . ' - ' . $patient['first_name'] . ' ' . $patient['last_name']); ?>
-                                    </option>
                                 <?php endforeach; ?>
-                            </select>
-                        </div>
-                    </div>
-                    <div class="form-row">
-                        <div class="form-group">
-                            <label for="donor_name">Donor Name *</label>
-                            <input type="text" name="donor_name" class="form-control" required>
-                        </div>
-                        <div class="form-group">
-                            <label for="phone">Phone *</label>
-                            <input type="tel" name="phone" class="form-control" required>
-                        </div>
-                    </div>
-                    <div class="form-row">
-                        <div class="form-group">
-                            <label for="email">Email</label>
-                            <input type="email" name="email" class="form-control">
-                        </div>
-                        <div class="form-group">
-                            <label for="date_of_birth">Date of Birth *</label>
-                            <input type="date" name="date_of_birth" class="form-control" required>
-                        </div>
-                    </div>
-                    <div class="form-row">
-                        <div class="form-group">
-                            <label for="gender">Gender *</label>
-                            <select name="gender" class="form-control" required>
-                                <option value="">Select Gender</option>
-                                <option value="male">Male</option>
-                                <option value="female">Female</option>
-                                <option value="other">Other</option>
-                            </select>
-                        </div>
-                        <div class="form-group">
-                            <label for="blood_group">Blood Group *</label>
-                            <select name="blood_group" class="form-control" required>
-                                <option value="">Select Blood Group</option>
-                                <option value="A+">A+</option>
-                                <option value="A-">A-</option>
-                                <option value="B+">B+</option>
-                                <option value="B-">B-</option>
-                                <option value="AB+">AB+</option>
-                                <option value="AB-">AB-</option>
-                                <option value="O+">O+</option>
-                                <option value="O-">O-</option>
-                            </select>
-                        </div>
-                    </div>
-                    <div class="form-group">
-                        <label for="address">Address *</label>
-                        <textarea name="address" class="form-control" rows="3" required></textarea>
-                    </div>
-                    <div class="form-group">
-                        <label for="organs_to_donate">Organs to Donate *</label>
-                        <div class="checkbox-grid">
-                            <?php foreach ($organ_types as $key => $value): ?>
-                                <label class="checkbox-item">
-                                    <input type="checkbox" name="organs_to_donate[]" value="<?php echo $key; ?>">
-                                    <?php echo $value; ?>
-                                </label>
-                            <?php endforeach; ?>
-                        </div>
-                    </div>
-                    <div class="form-group">
-                        <label for="consent_type">Consent Type *</label>
-                        <select name="consent_type" class="form-control" required>
-                            <option value="">Select Consent Type</option>
-                            <option value="living_donor">Living Donor</option>
-                            <option value="deceased_donor">Deceased Donor</option>
-                            <option value="family_consent">Family Consent</option>
-                        </select>
-                    </div>
-                    <div class="form-row">
-                        <div class="form-group">
-                            <label for="emergency_contact">Emergency Contact Name *</label>
-                            <input type="text" name="emergency_contact" class="form-control" required>
-                        </div>
-                        <div class="form-group">
-                            <label for="emergency_phone">Emergency Contact Phone *</label>
-                            <input type="tel" name="emergency_phone" class="form-control" required>
-                        </div>
-                    </div>
-                    <div class="form-group">
-                        <label for="medical_history">Medical History</label>
-                        <textarea name="medical_history" class="form-control" rows="3"></textarea>
+                            </tbody>
+                        </table>
                     </div>
                 </div>
-                <div class="modal-footer">
-                    <button type="button" class="btn btn-secondary" onclick="hideRegisterDonorModal()">Cancel</button>
-                    <button type="submit" class="btn btn-primary">Register Donor</button>
+
+                <!-- Registered Donors -->
+                <div class="content-section">
+                    <h2><i class="fas fa-users"></i> Registered Donors</h2>
+                    <div class="table-container">
+                        <table class="data-table">
+                            <thead>
+                                <tr>
+                                    <th>Donor</th>
+                                    <th>Blood Type</th>
+                                    <th>Organs Consented</th>
+                                    <th>Consent Date</th>
+                                    <th>Emergency Contact</th>
+                                    <th>Status</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <?php foreach ($donors as $donor): ?>
+                                    <tr>
+                                        <td><?php echo htmlspecialchars($donor['first_name'] . ' ' . $donor['last_name']); ?></td>
+                                        <td><span class="blood-type-badge"><?php echo $donor['blood_type']; ?></span></td>
+                                        <td>
+                                            <?php 
+                                            if ($donor['organs']) {
+                                                $organs = explode(',', $donor['organs']);
+                                                foreach ($organs as $organ) {
+                                                    echo '<span class="organ-badge">' . htmlspecialchars($organ) . '</span> ';
+                                                }
+                                            } else {
+                                                echo 'No active consents';
+                                            }
+                                            ?>
+                                        </td>
+                                        <td><?php echo date('M d, Y', strtotime($donor['consent_date'])); ?></td>
+                                        <td>
+                                            <?php echo htmlspecialchars($donor['emergency_contact_name']); ?><br>
+                                            <small><?php echo htmlspecialchars($donor['emergency_contact_phone']); ?></small>
+                                        </td>
+                                        <td>
+                                            <span class="status-badge status-<?php echo $donor['status']; ?>">
+                                                <?php echo ucfirst($donor['status']); ?>
+                                            </span>
+                                        </td>
+                                    </tr>
+                                <?php endforeach; ?>
+                            </tbody>
+                        </table>
+                    </div>
                 </div>
-            </form>
+
+                <!-- Recent Transplants -->
+                <div class="content-section">
+                    <h2><i class="fas fa-history"></i> Recent Transplants</h2>
+                    <div class="table-container">
+                        <table class="data-table">
+                            <thead>
+                                <tr>
+                                    <th>Transplant Date</th>
+                                    <th>Organ</th>
+                                    <th>Donor</th>
+                                    <th>Recipient</th>
+                                    <th>Surgeon</th>
+                                    <th>Hospital</th>
+                                    <th>Status</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <?php foreach ($recent_transplants as $transplant): ?>
+                                    <tr>
+                                        <td><?php echo date('M d, Y', strtotime($transplant['transplant_date'])); ?></td>
+                                        <td><span class="organ-badge"><?php echo $transplant['organ_type']; ?></span></td>
+                                        <td><?php echo htmlspecialchars($transplant['donor_fname'] . ' ' . $transplant['donor_lname']); ?></td>
+                                        <td><?php echo htmlspecialchars($transplant['recipient_fname'] . ' ' . $transplant['recipient_lname']); ?></td>
+                                        <td><?php echo htmlspecialchars($transplant['surgeon_name']); ?></td>
+                                        <td><?php echo htmlspecialchars($transplant['hospital']); ?></td>
+                                        <td>
+                                            <span class="status-badge status-<?php echo $transplant['status']; ?>">
+                                                <?php echo ucfirst($transplant['status']); ?>
+                                            </span>
+                                        </td>
+                                    </tr>
+                                <?php endforeach; ?>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
         </div>
     </div>
 
-    <?php if (in_array($user_role, ['admin', 'doctor'])): ?>
-    <!-- Record Donation Modal -->
-    <div id="recordDonationModal" class="modal">
+    <!-- Register Donor Modal -->
+    <?php if (in_array($user_role, ['admin', 'doctor', 'nurse', 'patient'])): ?>
+    <div id="registerDonorModal" class="modal">
         <div class="modal-content">
             <div class="modal-header">
-                <h2><i class="fas fa-heart"></i> Record Organ Donation</h2>
-                <span class="close" onclick="hideRecordDonationModal()">&times;</span>
+                <h2>Register as Organ Donor</h2>
+                <span class="close" onclick="closeModal('registerDonorModal')">&times;</span>
             </div>
             <form method="POST">
-                <input type="hidden" name="action" value="record_donation">
-                <div class="modal-body">
-                    <div class="form-row">
-                        <div class="form-group">
-                            <label for="donor_id">Donor *</label>
-                            <select name="donor_id" class="form-control" required>
-                                <option value="">Select Donor</option>
-                                <?php foreach ($donors as $donor): ?>
-                                    <option value="<?php echo $donor['id']; ?>">
-                                        <?php echo htmlspecialchars($donor['donor_id'] . ' - ' . $donor['donor_name']); ?>
-                                    </option>
-                                <?php endforeach; ?>
-                            </select>
-                        </div>
-                        <div class="form-group">
-                            <label for="organ_type">Organ Type *</label>
-                            <select name="organ_type" class="form-control" required>
-                                <option value="">Select Organ Type</option>
-                                <?php foreach ($organ_types as $key => $value): ?>
-                                    <option value="<?php echo $key; ?>"><?php echo $value; ?></option>
-                                <?php endforeach; ?>
-                            </select>
-                        </div>
-                    </div>
-                    <div class="form-row">
-                        <div class="form-group">
-                            <label for="donation_date">Donation Date *</label>
-                            <input type="date" name="donation_date" class="form-control" value="<?php echo date('Y-m-d'); ?>" required>
-                        </div>
-                        <div class="form-group">
-                            <label for="donation_time">Donation Time *</label>
-                            <input type="time" name="donation_time" class="form-control" required>
-                        </div>
-                    </div>
-                    <div class="form-row">
-                        <div class="form-group">
-                            <label for="hospital_name">Hospital Name *</label>
-                            <input type="text" name="hospital_name" class="form-control" required>
-                        </div>
-                        <div class="form-group">
-                            <label for="surgeon_name">Surgeon Name *</label>
-                            <input type="text" name="surgeon_name" class="form-control" required>
-                        </div>
-                    </div>
-                    <div class="form-row">
-                        <div class="form-group">
-                            <label for="organ_condition">Organ Condition *</label>
-                            <select name="organ_condition" class="form-control" required>
-                                <option value="">Select Condition</option>
-                                <option value="excellent">Excellent</option>
-                                <option value="good">Good</option>
-                                <option value="fair">Fair</option>
-                                <option value="poor">Poor</option>
-                            </select>
-                        </div>
-                        <div class="form-group">
-                            <label for="preservation_method">Preservation Method *</label>
-                            <select name="preservation_method" class="form-control" required>
-                                <option value="">Select Method</option>
-                                <option value="cold_storage">Cold Storage</option>
-                                <option value="machine_perfusion">Machine Perfusion</option>
-                                <option value="hypothermic_storage">Hypothermic Storage</option>
-                            </select>
-                        </div>
-                    </div>
-                    <div class="form-group">
-                        <label for="notes">Notes</label>
-                        <textarea name="notes" class="form-control" rows="3"></textarea>
+                <input type="hidden" name="action" value="register_donor">
+                <?php if ($user_role !== 'patient'): ?>
+                <div class="form-group">
+                    <label for="patient_id">Patient:</label>
+                    <select id="patient_id" name="patient_id" required>
+                        <option value="">Select Patient</option>
+                        <?php foreach ($patients as $patient): ?>
+                            <option value="<?php echo $patient['id']; ?>">
+                                <?php echo htmlspecialchars($patient['first_name'] . ' ' . $patient['last_name'] . ' (' . $patient['patient_id'] . ')'); ?>
+                            </option>
+                        <?php endforeach; ?>
+                    </select>
+                </div>
+                <?php endif; ?>
+                <div class="form-group">
+                    <label>Organs to Donate:</label>
+                    <div class="checkbox-group">
+                        <label><input type="checkbox" name="organs[]" value="Heart"> Heart</label>
+                        <label><input type="checkbox" name="organs[]" value="Liver"> Liver</label>
+                        <label><input type="checkbox" name="organs[]" value="Kidney"> Kidney</label>
+                        <label><input type="checkbox" name="organs[]" value="Lung"> Lung</label>
+                        <label><input type="checkbox" name="organs[]" value="Pancreas"> Pancreas</label>
+                        <label><input type="checkbox" name="organs[]" value="Cornea"> Cornea</label>
+                        <label><input type="checkbox" name="organs[]" value="Skin"> Skin</label>
+                        <label><input type="checkbox" name="organs[]" value="Bone"> Bone</label>
                     </div>
                 </div>
-                <div class="modal-footer">
-                    <button type="button" class="btn btn-secondary" onclick="hideRecordDonationModal()">Cancel</button>
-                    <button type="submit" class="btn btn-success">Record Donation</button>
+                <div class="form-group">
+                    <label for="medical_history">Medical History:</label>
+                    <textarea id="medical_history" name="medical_history" rows="3" required></textarea>
+                </div>
+                <div class="form-group">
+                    <label for="emergency_contact">Emergency Contact Name:</label>
+                    <input type="text" id="emergency_contact" name="emergency_contact" required>
+                </div>
+                <div class="form-group">
+                    <label for="emergency_phone">Emergency Contact Phone:</label>
+                    <input type="tel" id="emergency_phone" name="emergency_phone" required>
+                </div>
+                <div class="form-group">
+                    <label for="consent_date">Consent Date:</label>
+                    <input type="date" id="consent_date" name="consent_date" value="<?php echo date('Y-m-d'); ?>" required>
+                </div>
+                <div class="form-group">
+                    <label for="notes">Additional Notes:</label>
+                    <textarea id="notes" name="notes" rows="2"></textarea>
+                </div>
+                <div class="form-actions">
+                    <button type="button" class="btn btn-secondary" onclick="closeModal('registerDonorModal')">Cancel</button>
+                    <button type="submit" class="btn btn-primary">Register as Donor</button>
                 </div>
             </form>
         </div>
     </div>
     <?php endif; ?>
 
-    <!-- Request Organ Modal -->
-    <div id="requestOrganModal" class="modal">
+    <!-- Add Recipient Modal -->
+    <?php if (in_array($user_role, ['admin', 'doctor'])): ?>
+    <div id="addRecipientModal" class="modal">
         <div class="modal-content">
             <div class="modal-header">
-                <h2><i class="fas fa-hand-holding-medical"></i> Request Organ</h2>
-                <span class="close" onclick="hideRequestOrganModal()">&times;</span>
+                <h2>Add Recipient to Waiting List</h2>
+                <span class="close" onclick="closeModal('addRecipientModal')">&times;</span>
             </div>
             <form method="POST">
-                <input type="hidden" name="action" value="request_organ">
-                <div class="modal-body">
-                    <div class="form-row">
-                        <div class="form-group">
-                            <label for="patient_id">Patient *</label>
-                            <select name="patient_id" class="form-control" required>
-                                <option value="">Select Patient</option>
-                                <?php foreach ($patients as $patient): ?>
-                                    <option value="<?php echo $patient['id']; ?>">
-                                        <?php echo htmlspecialchars($patient['patient_id'] . ' - ' . $patient['first_name'] . ' ' . $patient['last_name']); ?>
-                                    </option>
-                                <?php endforeach; ?>
-                            </select>
-                        </div>
-                        <div class="form-group">
-                            <label for="organ_type">Organ Type *</label>
-                            <select name="organ_type" class="form-control" required>
-                                <option value="">Select Organ Type</option>
-                                <?php foreach ($organ_types as $key => $value): ?>
-                                    <option value="<?php echo $key; ?>"><?php echo $value; ?></option>
-                                <?php endforeach; ?>
-                            </select>
-                        </div>
-                    </div>
-                    <div class="form-row">
-                        <div class="form-group">
-                            <label for="blood_group">Blood Group *</label>
-                            <select name="blood_group" class="form-control" required>
-                                <option value="">Select Blood Group</option>
-                                <option value="A+">A+</option>
-                                <option value="A-">A-</option>
-                                <option value="B+">B+</option>
-                                <option value="B-">B-</option>
-                                <option value="AB+">AB+</option>
-                                <option value="AB-">AB-</option>
-                                <option value="O+">O+</option>
-                                <option value="O-">O-</option>
-                            </select>
-                        </div>
-                        <div class="form-group">
-                            <label for="urgency">Urgency *</label>
-                            <select name="urgency" class="form-control" required>
-                                <option value="">Select Urgency</option>
-                                <option value="normal">Normal</option>
-                                <option value="high">High</option>
-                                <option value="critical">Critical</option>
-                            </select>
-                        </div>
-                    </div>
-                    <div class="form-row">
-                        <div class="form-group">
-                            <label for="required_date">Required Date *</label>
-                            <input type="date" name="required_date" class="form-control" min="<?php echo date('Y-m-d'); ?>" required>
-                        </div>
-                        <div class="form-group">
-                            <label for="doctor_id">Doctor</label>
-                            <select name="doctor_id" class="form-control">
-                                <option value="">Select Doctor</option>
-                                <?php foreach ($doctors as $doctor): ?>
-                                    <option value="<?php echo $doctor['id']; ?>">
-                                        <?php echo htmlspecialchars($doctor['doctor_name']); ?>
-                                    </option>
-                                <?php endforeach; ?>
-                            </select>
-                        </div>
-                    </div>
-                    <div class="form-group">
-                        <label for="medical_condition">Medical Condition *</label>
-                        <textarea name="medical_condition" class="form-control" rows="3" required placeholder="Describe the medical condition requiring organ transplant"></textarea>
-                    </div>
-                    <div class="form-group">
-                        <label for="medical_notes">Medical Notes</label>
-                        <textarea name="medical_notes" class="form-control" rows="2" placeholder="Additional medical information"></textarea>
-                    </div>
+                <input type="hidden" name="action" value="add_recipient">
+                <div class="form-group">
+                    <label for="patient_id_rec">Patient:</label>
+                    <select id="patient_id_rec" name="patient_id" required>
+                        <option value="">Select Patient</option>
+                        <?php foreach ($patients as $patient): ?>
+                            <option value="<?php echo $patient['id']; ?>">
+                                <?php echo htmlspecialchars($patient['first_name'] . ' ' . $patient['last_name'] . ' (' . $patient['patient_id'] . ')'); ?>
+                            </option>
+                        <?php endforeach; ?>
+                    </select>
                 </div>
-                <div class="modal-footer">
-                    <button type="button" class="btn btn-secondary" onclick="hideRequestOrganModal()">Cancel</button>
-                    <button type="submit" class="btn btn-danger">Submit Request</button>
+                <div class="form-group">
+                    <label for="organ_needed">Organ Needed:</label>
+                    <select id="organ_needed" name="organ_needed" required>
+                        <option value="">Select Organ</option>
+                        <option value="Heart">Heart</option>
+                        <option value="Liver">Liver</option>
+                        <option value="Kidney">Kidney</option>
+                        <option value="Lung">Lung</option>
+                        <option value="Pancreas">Pancreas</option>
+                        <option value="Cornea">Cornea</option>
+                        <option value="Skin">Skin</option>
+                        <option value="Bone">Bone</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label for="priority_level">Priority Level:</label>
+                    <select id="priority_level" name="priority_level" required>
+                        <option value="low">Low</option>
+                        <option value="medium">Medium</option>
+                        <option value="high">High</option>
+                        <option value="critical">Critical</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label for="blood_type_rec">Blood Type:</label>
+                    <select id="blood_type_rec" name="blood_type" required>
+                        <option value="">Select Blood Type</option>
+                        <option value="A+">A+</option>
+                        <option value="A-">A-</option>
+                        <option value="B+">B+</option>
+                        <option value="B-">B-</option>
+                        <option value="AB+">AB+</option>
+                        <option value="AB-">AB-</option>
+                        <option value="O+">O+</option>
+                        <option value="O-">O-</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label for="medical_condition">Medical Condition:</label>
+                    <textarea id="medical_condition" name="medical_condition" rows="3" required></textarea>
+                </div>
+                <div class="form-group">
+                    <label for="doctor_notes">Doctor Notes:</label>
+                    <textarea id="doctor_notes" name="doctor_notes" rows="2"></textarea>
+                </div>
+                <div class="form-group">
+                    <label for="required_by">Required By Date:</label>
+                    <input type="date" id="required_by" name="required_by" required>
+                </div>
+                <div class="form-actions">
+                    <button type="button" class="btn btn-secondary" onclick="closeModal('addRecipientModal')">Cancel</button>
+                    <button type="submit" class="btn btn-warning">Add to Waiting List</button>
                 </div>
             </form>
         </div>
     </div>
+    <?php endif; ?>
 
+    <!-- Record Transplant Modal -->
+    <?php if (in_array($user_role, ['admin', 'doctor'])): ?>
+    <div id="recordTransplantModal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2>Record Organ Transplant</h2>
+                <span class="close" onclick="closeModal('recordTransplantModal')">&times;</span>
+            </div>
+            <form method="POST">
+                <input type="hidden" name="action" value="record_transplant">
+                <div class="form-group">
+                    <label for="donor_id">Donor:</label>
+                    <select id="donor_id" name="donor_id" required>
+                        <option value="">Select Donor</option>
+                        <?php foreach ($donors as $donor): ?>
+                            <option value="<?php echo $donor['id']; ?>">
+                                <?php echo htmlspecialchars($donor['first_name'] . ' ' . $donor['last_name']); ?>
+                            </option>
+                        <?php endforeach; ?>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label for="recipient_id">Recipient:</label>
+                    <select id="recipient_id" name="recipient_id" required>
+                        <option value="">Select Recipient</option>
+                        <?php foreach ($recipients as $recipient): ?>
+                            <?php if ($recipient['status'] === 'waiting'): ?>
+                                <option value="<?php echo $recipient['id']; ?>">
+                                    <?php echo htmlspecialchars($recipient['first_name'] . ' ' . $recipient['last_name'] . ' - ' . $recipient['organ_needed']); ?>
+                                </option>
+                            <?php endif; ?>
+                        <?php endforeach; ?>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label for="organ_type">Organ Type:</label>
+                    <select id="organ_type" name="organ_type" required>
+                        <option value="">Select Organ</option>
+                        <option value="Heart">Heart</option>
+                        <option value="Liver">Liver</option>
+                        <option value="Kidney">Kidney</option>
+                        <option value="Lung">Lung</option>
+                        <option value="Pancreas">Pancreas</option>
+                        <option value="Cornea">Cornea</option>
+                        <option value="Skin">Skin</option>
+                        <option value="Bone">Bone</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label for="transplant_date">Transplant Date:</label>
+                    <input type="date" id="transplant_date" name="transplant_date" value="<?php echo date('Y-m-d'); ?>" required>
+                </div>
+                <div class="form-group">
+                    <label for="surgeon_id">Surgeon:</label>
+                    <select id="surgeon_id" name="surgeon_id" required>
+                        <option value="">Select Surgeon</option>
+                        <?php foreach ($doctors as $doctor): ?>
+                            <option value="<?php echo $doctor['id']; ?>">
+                                <?php echo htmlspecialchars($doctor['doctor_name'] . ' - ' . $doctor['specialization']); ?>
+                            </option>
+                        <?php endforeach; ?>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label for="hospital">Hospital:</label>
+                    <input type="text" id="hospital" name="hospital" required>
+                </div>
+                <div class="form-group">
+                    <label for="surgery_notes">Surgery Notes:</label>
+                    <textarea id="surgery_notes" name="surgery_notes" rows="3"></textarea>
+                </div>
+                <div class="form-actions">
+                    <button type="button" class="btn btn-secondary" onclick="closeModal('recordTransplantModal')">Cancel</button>
+                    <button type="submit" class="btn btn-success">Record Transplant</button>
+                </div>
+            </form>
+        </div>
+    </div>
+    <?php endif; ?>
+
+    <script src="assets/js/script.js"></script>
     <script>
-        // Modal functions
-        function showRegisterDonorModal() {
-            document.getElementById('registerDonorModal').style.display = 'block';
-        }
-
-        function hideRegisterDonorModal() {
-            document.getElementById('registerDonorModal').style.display = 'none';
-        }
-
-        function showRecordDonationModal() {
-            document.getElementById('recordDonationModal').style.display = 'block';
-        }
-
-        function hideRecordDonationModal() {
-            document.getElementById('recordDonationModal').style.display = 'none';
-        }
-
-        function showRequestOrganModal() {
-            document.getElementById('requestOrganModal').style.display = 'block';
-        }
-
-        function hideRequestOrganModal() {
-            document.getElementById('requestOrganModal').style.display = 'none';
-        }
-
-        function updateRequestStatus(requestId, status) {
-            if (confirm('Are you sure you want to ' + status + ' this organ request?')) {
+        function updateRecipientStatus(recipientId, status) {
+            if (confirm('Are you sure you want to update the recipient status to ' + status + '?')) {
                 const form = document.createElement('form');
                 form.method = 'POST';
                 form.innerHTML = `
-                    <input type="hidden" name="action" value="update_request_status">
-                    <input type="hidden" name="request_id" value="${requestId}">
+                    <input type="hidden" name="action" value="update_recipient_status">
+                    <input type="hidden" name="recipient_id" value="${recipientId}">
                     <input type="hidden" name="status" value="${status}">
+                    <input type="hidden" name="notes" value="Status updated to ${status}">
                 `;
                 document.body.appendChild(form);
                 form.submit();
             }
         }
-
-        // Close modals when clicking outside
-        window.onclick = function(event) {
-            const modals = ['registerDonorModal', 'recordDonationModal', 'requestOrganModal'];
-            modals.forEach(modalId => {
-                const modal = document.getElementById(modalId);
-                if (event.target === modal) {
-                    modal.style.display = 'none';
-                }
-            });
-        }
     </script>
 
     <style>
-        .inventory-grid {
+        .organ-availability-grid {
             display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
-            gap: 20px;
-            margin-top: 20px;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 1rem;
+            margin: 1rem 0;
         }
 
-        .inventory-card {
+        .organ-card {
             background: white;
             border-radius: 8px;
-            padding: 20px;
-            text-align: center;
-            border: 2px solid #e0e0e0;
-            transition: all 0.3s ease;
+            padding: 1rem;
+            display: flex;
+            align-items: center;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            border-left: 4px solid #e74c3c;
         }
 
-        .inventory-card.critical {
-            border-color: #dc3545;
-            background: #fff5f5;
+        .organ-icon {
+            margin-right: 1rem;
+            font-size: 2rem;
+            color: #e74c3c;
         }
 
-        .inventory-card.low {
-            border-color: #ffc107;
-            background: #fffbf0;
-        }
-
-        .inventory-card.normal {
-            border-color: #28a745;
-            background: #f8fff8;
-        }
-
-        .organ-type {
-            font-size: 1.2em;
-            font-weight: bold;
-            color: #e91e63;
-            margin-bottom: 10px;
-        }
-
-        .organ-type i {
-            margin-right: 8px;
-        }
-
-        .organs-info {
-            margin-bottom: 15px;
-        }
-
-        .available {
-            font-size: 1.5em;
-            font-weight: bold;
+        .organ-info h3 {
+            margin: 0;
             color: #333;
+            font-size: 1.1rem;
         }
 
-        .allocated {
-            font-size: 0.9em;
-            color: #666;
-            margin-top: 5px;
-        }
-
-        .status-badge {
-            margin-bottom: 10px;
-        }
-
-        .update-info {
+        .organ-info p {
+            margin: 0.25rem 0 0 0;
             color: #666;
         }
 
         .organ-badge {
-            background: #e91e63;
+            background: #e74c3c;
             color: white;
-            padding: 4px 8px;
+            padding: 0.25rem 0.5rem;
             border-radius: 4px;
+            font-size: 0.875rem;
             font-weight: bold;
-            display: inline-flex;
-            align-items: center;
-            gap: 4px;
+            margin-right: 0.25rem;
+            display: inline-block;
+            margin-bottom: 0.25rem;
         }
 
-        .blood-group-badge {
+        .blood-type-badge {
             background: #dc3545;
             color: white;
-            padding: 4px 8px;
+            padding: 0.25rem 0.5rem;
             border-radius: 4px;
+            font-weight: bold;
+            font-size: 0.875rem;
+        }
+
+        .priority-badge {
+            padding: 0.25rem 0.5rem;
+            border-radius: 4px;
+            font-size: 0.875rem;
             font-weight: bold;
         }
 
-        .checkbox-grid {
+        .priority-low { background: #d4edda; color: #155724; }
+        .priority-medium { background: #fff3cd; color: #856404; }
+        .priority-high { background: #f8d7da; color: #721c24; }
+        .priority-critical { background: #dc3545; color: white; }
+
+        .status-badge {
+            padding: 0.25rem 0.5rem;
+            border-radius: 4px;
+            font-size: 0.875rem;
+            font-weight: bold;
+        }
+
+        .status-active { background: #d4edda; color: #155724; }
+        .status-waiting { background: #fff3cd; color: #856404; }
+        .status-matched { background: #d1ecf1; color: #0c5460; }
+        .status-transplanted { background: #d4edda; color: #155724; }
+        .status-cancelled { background: #f8d7da; color: #721c24; }
+        .status-completed { background: #d4edda; color: #155724; }
+
+        .checkbox-group {
             display: grid;
             grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
-            gap: 10px;
-            margin-top: 10px;
+            gap: 0.5rem;
+            margin-top: 0.5rem;
         }
 
-        .checkbox-item {
+        .checkbox-group label {
             display: flex;
             align-items: center;
-            gap: 8px;
-            padding: 8px;
-            border: 1px solid #e0e0e0;
-            border-radius: 4px;
-            cursor: pointer;
-            transition: background-color 0.2s;
+            font-weight: normal;
         }
 
-        .checkbox-item:hover {
-            background-color: #f8f9fa;
-        }
-
-        .checkbox-item input[type="checkbox"] {
-            margin: 0;
-        }
-
-        .form-row {
-            display: flex;
-            gap: 15px;
-        }
-
-        .form-row .form-group {
-            flex: 1;
-        }
-
-        @media (max-width: 768px) {
-            .form-row {
-                flex-direction: column;
-            }
-            
-            .inventory-grid {
-                grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
-                gap: 15px;
-            }
-
-            .checkbox-grid {
-                grid-template-columns: 1fr;
-            }
+        .checkbox-group input[type="checkbox"] {
+            margin-right: 0.5rem;
         }
     </style>
 </body>
