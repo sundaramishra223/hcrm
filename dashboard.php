@@ -196,6 +196,9 @@ try {
                     <li><a href="insurance.php"><i class="fas fa-shield-alt"></i> Insurance</a></li>
                 <?php endif; ?>
                 
+                <li><a href="blood-bank.php"><i class="fas fa-tint"></i> Blood Bank</a></li>
+                <li><a href="organ-donation.php"><i class="fas fa-heart"></i> Organ Donation</a></li>
+                
                 <?php if (in_array($user_role, ['admin'])): ?>
                     <li><a href="staff.php"><i class="fas fa-user-tie"></i> Staff</a></li>
                     <li><a href="equipment.php"><i class="fas fa-tools"></i> Equipment</a></li>

@@ -198,6 +198,8 @@ $pending_claims = count(array_filter($insurance_claims, function($claim) {
                 <li><a href="patient-portal.php?page=prescriptions" class="<?php echo $current_page === 'prescriptions' ? 'active' : ''; ?>"><i class="fas fa-prescription-bottle-alt"></i> Prescriptions</a></li>
                 <li><a href="patient-portal.php?page=reports" class="<?php echo $current_page === 'reports' ? 'active' : ''; ?>"><i class="fas fa-file-medical"></i> Lab Reports</a></li>
                 <li><a href="patient-portal.php?page=doctors" class="<?php echo $current_page === 'doctors' ? 'active' : ''; ?>"><i class="fas fa-user-md"></i> My Doctors</a></li>
+                <li><a href="blood-bank.php"><i class="fas fa-tint"></i> Blood Bank</a></li>
+                <li><a href="organ-donation.php"><i class="fas fa-heart"></i> Organ Donation</a></li>
                 <li><a href="patient-portal.php?page=profile" class="<?php echo $current_page === 'profile' ? 'active' : ''; ?>"><i class="fas fa-user-edit"></i> My Profile</a></li>
                 <li><a href="logout.php"><i class="fas fa-sign-out-alt"></i> Logout</a></li>
             </ul>
