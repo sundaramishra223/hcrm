@@ -9,29 +9,33 @@
 -- ============================================================================
 
 SET SQL_MODE = "NO_AUTO_VALUE_ON_ZERO";
+SET AUTOCOMMIT = 0;
 START TRANSACTION;
 SET time_zone = "+00:00";
 
--- Create database
+-- ============================================================================
+-- DATABASE CREATION
+-- ============================================================================
+
 CREATE DATABASE IF NOT EXISTS `hospital_crm` DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
 USE `hospital_crm`;
 
 -- ============================================================================
--- USER MANAGEMENT TABLES
+-- CORE TABLES
 -- ============================================================================
 
 -- --------------------------------------------------------
 -- Table structure for table `roles`
 -- --------------------------------------------------------
 
+DROP TABLE IF EXISTS `roles`;
 CREATE TABLE `roles` (
   `id` int(11) NOT NULL AUTO_INCREMENT,
   `role_name` varchar(50) NOT NULL,
-  `role_display_name` varchar(100) NOT NULL,
-  `description` text,
-  `is_active` tinyint(1) NOT NULL DEFAULT 1,
-  `created_at` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
-  `updated_at` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  `role_display` varchar(100) NOT NULL,
+  `permissions` text DEFAULT NULL,
+  `is_active` tinyint(1) DEFAULT 1,
+  `created_at` timestamp NOT NULL DEFAULT current_timestamp(),
   PRIMARY KEY (`id`),
   UNIQUE KEY `role_name` (`role_name`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
@@ -40,157 +44,377 @@ CREATE TABLE `roles` (
 -- Table structure for table `users`
 -- --------------------------------------------------------
 
+DROP TABLE IF EXISTS `users`;
 CREATE TABLE `users` (
   `id` int(11) NOT NULL AUTO_INCREMENT,
-  `username` varchar(100) NOT NULL,
-  `email` varchar(255) NOT NULL,
-  `password_hash` varchar(255) NOT NULL,
-  `role_id` int(11) NOT NULL DEFAULT 1,
-  `first_name` varchar(100) DEFAULT NULL,
-  `last_name` varchar(100) DEFAULT NULL,
-  `phone` varchar(20) DEFAULT NULL,
-  `is_active` tinyint(1) NOT NULL DEFAULT 1,
+  `username` varchar(50) NOT NULL,
+  `email` varchar(100) NOT NULL,
+  `password` varchar(255) NOT NULL,
+  `role` varchar(50) NOT NULL,
+  `role_display` varchar(100) DEFAULT NULL,
+  `is_active` tinyint(1) DEFAULT 1,
   `last_login` timestamp NULL DEFAULT NULL,
-  `created_at` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
-  `updated_at` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  `created_at` timestamp NOT NULL DEFAULT current_timestamp(),
+  `updated_at` timestamp NOT NULL DEFAULT current_timestamp() ON UPDATE current_timestamp(),
   PRIMARY KEY (`id`),
   UNIQUE KEY `username` (`username`),
   UNIQUE KEY `email` (`email`),
-  KEY `role_id` (`role_id`),
-  CONSTRAINT `users_ibfk_1` FOREIGN KEY (`role_id`) REFERENCES `roles` (`id`)
+  KEY `role` (`role`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
-
--- ============================================================================
--- PATIENT MANAGEMENT TABLES
--- ============================================================================
 
 -- --------------------------------------------------------
 -- Table structure for table `patients`
 -- --------------------------------------------------------
 
+DROP TABLE IF EXISTS `patients`;
 CREATE TABLE `patients` (
   `id` int(11) NOT NULL AUTO_INCREMENT,
   `patient_id` varchar(20) NOT NULL,
-  `first_name` varchar(100) NOT NULL,
-  `last_name` varchar(100) NOT NULL,
-  `email` varchar(255) NOT NULL,
-  `phone` varchar(20) DEFAULT NULL,
-  `address` text,
+  `first_name` varchar(50) NOT NULL,
+  `last_name` varchar(50) NOT NULL,
+  `email` varchar(100) DEFAULT NULL,
+  `phone` varchar(20) NOT NULL,
   `date_of_birth` date DEFAULT NULL,
-  `gender` enum('male','female','other') NOT NULL DEFAULT 'male',
+  `gender` enum('male','female','other') NOT NULL,
   `blood_group` varchar(5) DEFAULT NULL,
-  `emergency_contact_name` varchar(200) DEFAULT NULL,
+  `address` text DEFAULT NULL,
+  `emergency_contact_name` varchar(100) DEFAULT NULL,
   `emergency_contact_phone` varchar(20) DEFAULT NULL,
-  `medical_history` text,
-  `allergies` text,
-  `photo` varchar(255) DEFAULT NULL,
-  `is_active` tinyint(1) NOT NULL DEFAULT 1,
-  `created_by` int(11) DEFAULT NULL,
-  `created_at` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
-  `updated_at` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  `medical_history` text DEFAULT NULL,
+  `allergies` text DEFAULT NULL,
+  `is_active` tinyint(1) DEFAULT 1,
+  `created_at` timestamp NOT NULL DEFAULT current_timestamp(),
+  `updated_at` timestamp NOT NULL DEFAULT current_timestamp() ON UPDATE current_timestamp(),
   PRIMARY KEY (`id`),
   UNIQUE KEY `patient_id` (`patient_id`),
-  UNIQUE KEY `email` (`email`),
-  KEY `created_by` (`created_by`),
-  CONSTRAINT `patients_ibfk_1` FOREIGN KEY (`created_by`) REFERENCES `users` (`id`)
+  KEY `email` (`email`),
+  KEY `phone` (`phone`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
-
--- ============================================================================
--- DOCTOR MANAGEMENT TABLES
--- ============================================================================
 
 -- --------------------------------------------------------
 -- Table structure for table `doctors`
 -- --------------------------------------------------------
 
+DROP TABLE IF EXISTS `doctors`;
 CREATE TABLE `doctors` (
   `id` int(11) NOT NULL AUTO_INCREMENT,
-  `doctor_name` varchar(200) NOT NULL,
-  `specialization` varchar(200) DEFAULT NULL,
-  `qualification` varchar(500) DEFAULT NULL,
-  `phone` varchar(20) DEFAULT NULL,
-  `email` varchar(255) DEFAULT NULL,
-  `address` text,
-  `consultation_fee` decimal(10,2) DEFAULT 0.00,
+  `user_id` int(11) DEFAULT NULL,
+  `doctor_name` varchar(100) NOT NULL,
+  `specialization` varchar(100) NOT NULL,
+  `qualification` varchar(200) NOT NULL,
   `experience_years` int(11) DEFAULT 0,
-  `schedule` text,
-  `photo` varchar(255) DEFAULT NULL,
-  `is_active` tinyint(1) NOT NULL DEFAULT 1,
-  `created_by` int(11) DEFAULT NULL,
-  `created_at` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
-  `updated_at` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-  PRIMARY KEY (`id`),
-  KEY `created_by` (`created_by`),
-  CONSTRAINT `doctors_ibfk_1` FOREIGN KEY (`created_by`) REFERENCES `users` (`id`)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
-
--- ============================================================================
--- STAFF MANAGEMENT TABLES
--- ============================================================================
-
--- --------------------------------------------------------
--- Table structure for table `staff`
--- --------------------------------------------------------
-
-CREATE TABLE `staff` (
-  `id` int(11) NOT NULL AUTO_INCREMENT,
-  `staff_id` varchar(20) NOT NULL,
-  `first_name` varchar(100) NOT NULL,
-  `last_name` varchar(100) NOT NULL,
-  `email` varchar(255) DEFAULT NULL,
+  `consultation_fee` decimal(10,2) DEFAULT 0.00,
   `phone` varchar(20) DEFAULT NULL,
-  `position` varchar(100) NOT NULL,
-  `department` varchar(100) DEFAULT NULL,
-  `salary` decimal(10,2) DEFAULT 0.00,
-  `date_of_joining` date DEFAULT NULL,
-  `address` text,
-  `emergency_contact` varchar(200) DEFAULT NULL,
-  `emergency_phone` varchar(20) DEFAULT NULL,
-  `photo` varchar(255) DEFAULT NULL,
-  `is_active` tinyint(1) NOT NULL DEFAULT 1,
-  `created_by` int(11) DEFAULT NULL,
-  `created_at` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
-  `updated_at` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  `email` varchar(100) DEFAULT NULL,
+  `schedule` text DEFAULT NULL,
+  `is_active` tinyint(1) DEFAULT 1,
+  `created_at` timestamp NOT NULL DEFAULT current_timestamp(),
+  `updated_at` timestamp NOT NULL DEFAULT current_timestamp() ON UPDATE current_timestamp(),
   PRIMARY KEY (`id`),
-  UNIQUE KEY `staff_id` (`staff_id`),
-  KEY `created_by` (`created_by`),
-  CONSTRAINT `staff_ibfk_1` FOREIGN KEY (`created_by`) REFERENCES `users` (`id`)
+  KEY `user_id` (`user_id`),
+  KEY `specialization` (`specialization`),
+  CONSTRAINT `doctors_ibfk_1` FOREIGN KEY (`user_id`) REFERENCES `users` (`id`) ON DELETE SET NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
-
--- ============================================================================
--- APPOINTMENT MANAGEMENT TABLES
--- ============================================================================
 
 -- --------------------------------------------------------
 -- Table structure for table `appointments`
 -- --------------------------------------------------------
 
+DROP TABLE IF EXISTS `appointments`;
 CREATE TABLE `appointments` (
   `id` int(11) NOT NULL AUTO_INCREMENT,
-  `appointment_id` varchar(20) NOT NULL,
   `patient_id` int(11) NOT NULL,
   `doctor_id` int(11) NOT NULL,
   `appointment_date` date NOT NULL,
   `appointment_time` time NOT NULL,
-  `appointment_type` enum('consultation','follow_up','routine_checkup','emergency') DEFAULT 'consultation',
-  `reason` text,
-  `status` enum('scheduled','confirmed','in_progress','completed','cancelled','no_show') DEFAULT 'scheduled',
-  `notes` text,
+  `appointment_type` enum('consultation','follow_up','emergency','routine_checkup') DEFAULT 'consultation',
+  `status` enum('scheduled','completed','cancelled','no_show') DEFAULT 'scheduled',
+  `notes` text DEFAULT NULL,
   `created_by` int(11) DEFAULT NULL,
-  `created_at` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
-  `updated_at` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  `created_at` timestamp NOT NULL DEFAULT current_timestamp(),
+  `updated_at` timestamp NOT NULL DEFAULT current_timestamp() ON UPDATE current_timestamp(),
   PRIMARY KEY (`id`),
-  UNIQUE KEY `appointment_id` (`appointment_id`),
   KEY `patient_id` (`patient_id`),
   KEY `doctor_id` (`doctor_id`),
+  KEY `appointment_date` (`appointment_date`),
+  KEY `status` (`status`),
   KEY `created_by` (`created_by`),
   CONSTRAINT `appointments_ibfk_1` FOREIGN KEY (`patient_id`) REFERENCES `patients` (`id`),
   CONSTRAINT `appointments_ibfk_2` FOREIGN KEY (`doctor_id`) REFERENCES `doctors` (`id`),
-  CONSTRAINT `appointments_ibfk_3` FOREIGN KEY (`created_by`) REFERENCES `users` (`id`)
+  CONSTRAINT `appointments_ibfk_3` FOREIGN KEY (`created_by`) REFERENCES `users` (`id`) ON DELETE SET NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- --------------------------------------------------------
+-- Table structure for table `pharmacy`
+-- --------------------------------------------------------
+
+DROP TABLE IF EXISTS `pharmacy`;
+CREATE TABLE `pharmacy` (
+  `id` int(11) NOT NULL AUTO_INCREMENT,
+  `medicine_name` varchar(200) NOT NULL,
+  `generic_name` varchar(200) DEFAULT NULL,
+  `manufacturer` varchar(100) DEFAULT NULL,
+  `category` varchar(50) DEFAULT NULL,
+  `unit_price` decimal(10,2) NOT NULL DEFAULT 0.00,
+  `stock_quantity` int(11) NOT NULL DEFAULT 0,
+  `reorder_level` int(11) DEFAULT 10,
+  `expiry_date` date DEFAULT NULL,
+  `batch_number` varchar(50) DEFAULT NULL,
+  `is_active` tinyint(1) DEFAULT 1,
+  `created_at` timestamp NOT NULL DEFAULT current_timestamp(),
+  `updated_at` timestamp NOT NULL DEFAULT current_timestamp() ON UPDATE current_timestamp(),
+  PRIMARY KEY (`id`),
+  KEY `medicine_name` (`medicine_name`),
+  KEY `category` (`category`),
+  KEY `expiry_date` (`expiry_date`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- --------------------------------------------------------
+-- Table structure for table `pharmacy_sales`
+-- --------------------------------------------------------
+
+DROP TABLE IF EXISTS `pharmacy_sales`;
+CREATE TABLE `pharmacy_sales` (
+  `id` int(11) NOT NULL AUTO_INCREMENT,
+  `sale_id` varchar(20) NOT NULL,
+  `patient_id` int(11) DEFAULT NULL,
+  `sale_date` date NOT NULL,
+  `total_amount` decimal(10,2) NOT NULL DEFAULT 0.00,
+  `discount_amount` decimal(10,2) DEFAULT 0.00,
+  `tax_amount` decimal(10,2) DEFAULT 0.00,
+  `payment_status` enum('pending','paid','partial') DEFAULT 'pending',
+  `payment_method` enum('cash','card','upi','insurance') DEFAULT NULL,
+  `sold_by` int(11) DEFAULT NULL,
+  `created_at` timestamp NOT NULL DEFAULT current_timestamp(),
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `sale_id` (`sale_id`),
+  KEY `patient_id` (`patient_id`),
+  KEY `sale_date` (`sale_date`),
+  KEY `sold_by` (`sold_by`),
+  CONSTRAINT `pharmacy_sales_ibfk_1` FOREIGN KEY (`patient_id`) REFERENCES `patients` (`id`) ON DELETE SET NULL,
+  CONSTRAINT `pharmacy_sales_ibfk_2` FOREIGN KEY (`sold_by`) REFERENCES `users` (`id`) ON DELETE SET NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- --------------------------------------------------------
+-- Table structure for table `pharmacy_sale_items`
+-- --------------------------------------------------------
+
+DROP TABLE IF EXISTS `pharmacy_sale_items`;
+CREATE TABLE `pharmacy_sale_items` (
+  `id` int(11) NOT NULL AUTO_INCREMENT,
+  `sale_id` int(11) NOT NULL,
+  `medicine_id` int(11) NOT NULL,
+  `quantity` int(11) NOT NULL,
+  `unit_price` decimal(10,2) NOT NULL,
+  `total_price` decimal(10,2) NOT NULL,
+  `created_at` timestamp NOT NULL DEFAULT current_timestamp(),
+  PRIMARY KEY (`id`),
+  KEY `sale_id` (`sale_id`),
+  KEY `medicine_id` (`medicine_id`),
+  CONSTRAINT `pharmacy_sale_items_ibfk_1` FOREIGN KEY (`sale_id`) REFERENCES `pharmacy_sales` (`id`) ON DELETE CASCADE,
+  CONSTRAINT `pharmacy_sale_items_ibfk_2` FOREIGN KEY (`medicine_id`) REFERENCES `pharmacy` (`id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- --------------------------------------------------------
+-- Table structure for table `laboratory`
+-- --------------------------------------------------------
+
+DROP TABLE IF EXISTS `laboratory`;
+CREATE TABLE `laboratory` (
+  `id` int(11) NOT NULL AUTO_INCREMENT,
+  `test_name` varchar(200) NOT NULL,
+  `test_category` varchar(100) NOT NULL,
+  `description` text DEFAULT NULL,
+  `normal_range` varchar(100) DEFAULT NULL,
+  `unit` varchar(20) DEFAULT NULL,
+  `price` decimal(10,2) NOT NULL DEFAULT 0.00,
+  `sample_type` varchar(50) DEFAULT NULL,
+  `preparation_instructions` text DEFAULT NULL,
+  `is_active` tinyint(1) DEFAULT 1,
+  `created_at` timestamp NOT NULL DEFAULT current_timestamp(),
+  `updated_at` timestamp NOT NULL DEFAULT current_timestamp() ON UPDATE current_timestamp(),
+  PRIMARY KEY (`id`),
+  KEY `test_category` (`test_category`),
+  KEY `test_name` (`test_name`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- --------------------------------------------------------
+-- Table structure for table `lab_tests`
+-- --------------------------------------------------------
+
+DROP TABLE IF EXISTS `lab_tests`;
+CREATE TABLE `lab_tests` (
+  `id` int(11) NOT NULL AUTO_INCREMENT,
+  `test_id` varchar(50) NOT NULL,
+  `patient_id` int(11) NOT NULL,
+  `doctor_id` int(11) DEFAULT NULL,
+  `test_date` date NOT NULL,
+  `status` enum('pending','in_progress','completed','cancelled') DEFAULT 'pending',
+  `priority` enum('normal','high','urgent') DEFAULT 'normal',
+  `notes` text DEFAULT NULL,
+  `total_amount` decimal(10,2) DEFAULT 0.00,
+  `created_by` int(11) DEFAULT NULL,
+  `created_at` timestamp NOT NULL DEFAULT current_timestamp(),
+  `updated_at` timestamp NOT NULL DEFAULT current_timestamp() ON UPDATE current_timestamp(),
+  PRIMARY KEY (`id`),
+  KEY `test_id` (`test_id`),
+  KEY `patient_id` (`patient_id`),
+  KEY `doctor_id` (`doctor_id`),
+  KEY `test_date` (`test_date`),
+  KEY `status` (`status`),
+  KEY `created_by` (`created_by`),
+  CONSTRAINT `lab_tests_ibfk_1` FOREIGN KEY (`patient_id`) REFERENCES `patients` (`id`),
+  CONSTRAINT `lab_tests_ibfk_2` FOREIGN KEY (`doctor_id`) REFERENCES `doctors` (`id`) ON DELETE SET NULL,
+  CONSTRAINT `lab_tests_ibfk_3` FOREIGN KEY (`created_by`) REFERENCES `users` (`id`) ON DELETE SET NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- --------------------------------------------------------
+-- Table structure for table `laboratory_results`
+-- --------------------------------------------------------
+
+DROP TABLE IF EXISTS `laboratory_results`;
+CREATE TABLE `laboratory_results` (
+  `id` int(11) NOT NULL AUTO_INCREMENT,
+  `test_id` int(11) NOT NULL,
+  `patient_id` int(11) NOT NULL,
+  `doctor_id` int(11) DEFAULT NULL,
+  `result_value` varchar(200) NOT NULL,
+  `reference_range` varchar(100) DEFAULT NULL,
+  `unit` varchar(20) DEFAULT NULL,
+  `notes` text DEFAULT NULL,
+  `test_date` date NOT NULL,
+  `status` enum('pending','completed','reviewed') DEFAULT 'pending',
+  `conducted_by` int(11) DEFAULT NULL,
+  `reviewed_by` int(11) DEFAULT NULL,
+  `created_at` timestamp NOT NULL DEFAULT current_timestamp(),
+  `updated_at` timestamp NOT NULL DEFAULT current_timestamp() ON UPDATE current_timestamp(),
+  PRIMARY KEY (`id`),
+  KEY `test_id` (`test_id`),
+  KEY `patient_id` (`patient_id`),
+  KEY `doctor_id` (`doctor_id`),
+  KEY `conducted_by` (`conducted_by`),
+  KEY `reviewed_by` (`reviewed_by`),
+  CONSTRAINT `laboratory_results_ibfk_1` FOREIGN KEY (`test_id`) REFERENCES `lab_tests` (`id`),
+  CONSTRAINT `laboratory_results_ibfk_2` FOREIGN KEY (`patient_id`) REFERENCES `patients` (`id`),
+  CONSTRAINT `laboratory_results_ibfk_3` FOREIGN KEY (`doctor_id`) REFERENCES `doctors` (`id`) ON DELETE SET NULL,
+  CONSTRAINT `laboratory_results_ibfk_4` FOREIGN KEY (`conducted_by`) REFERENCES `users` (`id`) ON DELETE SET NULL,
+  CONSTRAINT `laboratory_results_ibfk_5` FOREIGN KEY (`reviewed_by`) REFERENCES `users` (`id`) ON DELETE SET NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- --------------------------------------------------------
+-- Table structure for table `prescriptions`
+-- --------------------------------------------------------
+
+DROP TABLE IF EXISTS `prescriptions`;
+CREATE TABLE `prescriptions` (
+  `id` int(11) NOT NULL AUTO_INCREMENT,
+  `prescription_id` varchar(20) NOT NULL,
+  `patient_id` int(11) NOT NULL,
+  `doctor_id` int(11) NOT NULL,
+  `appointment_id` int(11) DEFAULT NULL,
+  `prescription_date` date NOT NULL,
+  `status` enum('pending','dispensed','cancelled') DEFAULT 'pending',
+  `notes` text DEFAULT NULL,
+  `prescribed_by` int(11) NOT NULL,
+  `dispensed_by` int(11) DEFAULT NULL,
+  `dispensed_at` timestamp NULL DEFAULT NULL,
+  `created_at` timestamp NOT NULL DEFAULT current_timestamp(),
+  `updated_at` timestamp NOT NULL DEFAULT current_timestamp() ON UPDATE current_timestamp(),
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `prescription_id` (`prescription_id`),
+  KEY `patient_id` (`patient_id`),
+  KEY `doctor_id` (`doctor_id`),
+  KEY `appointment_id` (`appointment_id`),
+  KEY `prescribed_by` (`prescribed_by`),
+  KEY `dispensed_by` (`dispensed_by`),
+  CONSTRAINT `prescriptions_ibfk_1` FOREIGN KEY (`patient_id`) REFERENCES `patients` (`id`),
+  CONSTRAINT `prescriptions_ibfk_2` FOREIGN KEY (`doctor_id`) REFERENCES `doctors` (`id`),
+  CONSTRAINT `prescriptions_ibfk_3` FOREIGN KEY (`appointment_id`) REFERENCES `appointments` (`id`) ON DELETE SET NULL,
+  CONSTRAINT `prescriptions_ibfk_4` FOREIGN KEY (`prescribed_by`) REFERENCES `users` (`id`),
+  CONSTRAINT `prescriptions_ibfk_5` FOREIGN KEY (`dispensed_by`) REFERENCES `users` (`id`) ON DELETE SET NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- --------------------------------------------------------
+-- Table structure for table `prescription_details`
+-- --------------------------------------------------------
+
+DROP TABLE IF EXISTS `prescription_details`;
+CREATE TABLE `prescription_details` (
+  `id` int(11) NOT NULL AUTO_INCREMENT,
+  `prescription_id` int(11) NOT NULL,
+  `medicine_id` int(11) NOT NULL,
+  `dosage` varchar(100) NOT NULL,
+  `frequency` varchar(100) NOT NULL,
+  `duration` varchar(100) NOT NULL,
+  `instructions` text DEFAULT NULL,
+  `quantity` int(11) DEFAULT 1,
+  `created_at` timestamp NOT NULL DEFAULT current_timestamp(),
+  PRIMARY KEY (`id`),
+  KEY `prescription_id` (`prescription_id`),
+  KEY `medicine_id` (`medicine_id`),
+  CONSTRAINT `prescription_details_ibfk_1` FOREIGN KEY (`prescription_id`) REFERENCES `prescriptions` (`id`) ON DELETE CASCADE,
+  CONSTRAINT `prescription_details_ibfk_2` FOREIGN KEY (`medicine_id`) REFERENCES `pharmacy` (`id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- --------------------------------------------------------
+-- Table structure for table `staff`
+-- --------------------------------------------------------
+
+DROP TABLE IF EXISTS `staff`;
+CREATE TABLE `staff` (
+  `id` int(11) NOT NULL AUTO_INCREMENT,
+  `user_id` int(11) DEFAULT NULL,
+  `staff_id` varchar(20) NOT NULL,
+  `first_name` varchar(50) NOT NULL,
+  `last_name` varchar(50) NOT NULL,
+  `email` varchar(100) DEFAULT NULL,
+  `phone` varchar(20) DEFAULT NULL,
+  `department` varchar(100) DEFAULT NULL,
+  `position` varchar(100) DEFAULT NULL,
+  `hire_date` date DEFAULT NULL,
+  `salary` decimal(10,2) DEFAULT NULL,
+  `is_active` tinyint(1) DEFAULT 1,
+  `created_at` timestamp NOT NULL DEFAULT current_timestamp(),
+  `updated_at` timestamp NOT NULL DEFAULT current_timestamp() ON UPDATE current_timestamp(),
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `staff_id` (`staff_id`),
+  KEY `user_id` (`user_id`),
+  KEY `department` (`department`),
+  CONSTRAINT `staff_ibfk_1` FOREIGN KEY (`user_id`) REFERENCES `users` (`id`) ON DELETE SET NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- --------------------------------------------------------
+-- Table structure for table `equipment`
+-- --------------------------------------------------------
+
+DROP TABLE IF EXISTS `equipment`;
+CREATE TABLE `equipment` (
+  `id` int(11) NOT NULL AUTO_INCREMENT,
+  `equipment_name` varchar(200) NOT NULL,
+  `equipment_id` varchar(50) NOT NULL,
+  `category` varchar(100) NOT NULL,
+  `manufacturer` varchar(100) DEFAULT NULL,
+  `model` varchar(100) DEFAULT NULL,
+  `serial_number` varchar(100) DEFAULT NULL,
+  `purchase_date` date DEFAULT NULL,
+  `purchase_cost` decimal(10,2) DEFAULT NULL,
+  `warranty_expiry` date DEFAULT NULL,
+  `status` enum('active','maintenance','repair','retired') DEFAULT 'active',
+  `location` varchar(200) DEFAULT NULL,
+  `last_maintenance` date DEFAULT NULL,
+  `next_maintenance` date DEFAULT NULL,
+  `notes` text DEFAULT NULL,
+  `is_active` tinyint(1) DEFAULT 1,
+  `created_at` timestamp NOT NULL DEFAULT current_timestamp(),
+  `updated_at` timestamp NOT NULL DEFAULT current_timestamp() ON UPDATE current_timestamp(),
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `equipment_id` (`equipment_id`),
+  KEY `category` (`category`),
+  KEY `status` (`status`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- ============================================================================
--- BILLING MANAGEMENT TABLES
+-- ENHANCED BILLING SYSTEM TABLES
 -- ============================================================================
 
 -- --------------------------------------------------------
@@ -229,12 +453,7 @@ CREATE TABLE `billing` (
   KEY `created_by` (`created_by`),
   KEY `payment_status` (`payment_status`),
   KEY `bill_date` (`bill_date`),
-  KEY `due_date` (`due_date`),
-  CONSTRAINT `billing_ibfk_1` FOREIGN KEY (`patient_id`) REFERENCES `patients` (`id`),
-  CONSTRAINT `billing_ibfk_2` FOREIGN KEY (`appointment_id`) REFERENCES `appointments` (`id`),
-  CONSTRAINT `billing_ibfk_3` FOREIGN KEY (`pharmacy_sale_id`) REFERENCES `pharmacy_sales` (`id`),
-  CONSTRAINT `billing_ibfk_4` FOREIGN KEY (`lab_test_id`) REFERENCES `lab_tests` (`id`),
-  CONSTRAINT `billing_ibfk_5` FOREIGN KEY (`created_by`) REFERENCES `users` (`id`)
+  KEY `due_date` (`due_date`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- --------------------------------------------------------
@@ -284,6 +503,14 @@ CREATE TABLE `payment_transactions` (
   CONSTRAINT `payment_transactions_ibfk_2` FOREIGN KEY (`recorded_by`) REFERENCES `users` (`id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
+-- Add foreign key constraints for billing table after all tables are created
+ALTER TABLE `billing` 
+  ADD CONSTRAINT `billing_ibfk_1` FOREIGN KEY (`patient_id`) REFERENCES `patients` (`id`),
+  ADD CONSTRAINT `billing_ibfk_2` FOREIGN KEY (`appointment_id`) REFERENCES `appointments` (`id`) ON DELETE SET NULL,
+  ADD CONSTRAINT `billing_ibfk_3` FOREIGN KEY (`pharmacy_sale_id`) REFERENCES `pharmacy_sales` (`id`) ON DELETE SET NULL,
+  ADD CONSTRAINT `billing_ibfk_4` FOREIGN KEY (`lab_test_id`) REFERENCES `lab_tests` (`id`) ON DELETE SET NULL,
+  ADD CONSTRAINT `billing_ibfk_5` FOREIGN KEY (`created_by`) REFERENCES `users` (`id`);
+
 -- ============================================================================
 -- INSURANCE MANAGEMENT TABLES
 -- ============================================================================
@@ -292,24 +519,23 @@ CREATE TABLE `payment_transactions` (
 -- Table structure for table `insurance_companies`
 -- --------------------------------------------------------
 
+DROP TABLE IF EXISTS `insurance_companies`;
 CREATE TABLE `insurance_companies` (
   `id` int(11) NOT NULL AUTO_INCREMENT,
   `company_name` varchar(200) NOT NULL,
   `company_code` varchar(10) NOT NULL,
-  `license_number` varchar(100) DEFAULT NULL,
-  `contact_email` varchar(255) DEFAULT NULL,
+  `contact_person` varchar(100) DEFAULT NULL,
   `contact_phone` varchar(20) DEFAULT NULL,
-  `address` text,
-  `website` varchar(255) DEFAULT NULL,
-  `coverage_types` varchar(500) DEFAULT NULL,
-  `network_hospitals` text,
-  `cashless_limit` decimal(10,2) DEFAULT 0.00,
-  `reimbursement_percentage` decimal(5,2) DEFAULT 80.00,
-  `claim_settlement_days` int(11) DEFAULT 30,
-  `is_active` tinyint(1) NOT NULL DEFAULT 1,
-  `created_by` int(11) DEFAULT NULL,
-  `created_at` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
-  `updated_at` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  `contact_email` varchar(100) DEFAULT NULL,
+  `address` text DEFAULT NULL,
+  `website` varchar(200) DEFAULT NULL,
+  `policy_types` text DEFAULT NULL,
+  `coverage_details` text DEFAULT NULL,
+  `claim_process` text DEFAULT NULL,
+  `is_active` tinyint(1) DEFAULT 1,
+  `created_by` int(11) NOT NULL,
+  `created_at` timestamp NOT NULL DEFAULT current_timestamp(),
+  `updated_at` timestamp NOT NULL DEFAULT current_timestamp() ON UPDATE current_timestamp(),
   PRIMARY KEY (`id`),
   UNIQUE KEY `company_code` (`company_code`),
   KEY `created_by` (`created_by`),
@@ -320,29 +546,26 @@ CREATE TABLE `insurance_companies` (
 -- Table structure for table `patient_insurance_policies`
 -- --------------------------------------------------------
 
+DROP TABLE IF EXISTS `patient_insurance_policies`;
 CREATE TABLE `patient_insurance_policies` (
   `id` int(11) NOT NULL AUTO_INCREMENT,
   `patient_id` int(11) NOT NULL,
   `insurance_company_id` int(11) NOT NULL,
   `policy_number` varchar(100) NOT NULL,
-  `policy_holder_name` varchar(200) NOT NULL,
-  `relationship_to_patient` enum('self','spouse','child','parent','other') DEFAULT 'self',
-  `policy_type` enum('individual','family','group','corporate') DEFAULT 'individual',
+  `policy_holder_name` varchar(100) NOT NULL,
+  `relationship` enum('self','spouse','parent','child','other') DEFAULT 'self',
+  `policy_type` varchar(100) DEFAULT NULL,
   `coverage_amount` decimal(12,2) NOT NULL DEFAULT 0.00,
   `deductible_amount` decimal(10,2) DEFAULT 0.00,
   `co_payment_percentage` decimal(5,2) DEFAULT 0.00,
-  `policy_start_date` date NOT NULL,
+  `start_date` date NOT NULL,
   `expiry_date` date NOT NULL,
   `premium_amount` decimal(10,2) DEFAULT 0.00,
   `premium_frequency` enum('monthly','quarterly','half_yearly','yearly') DEFAULT 'yearly',
-  `cashless_available` tinyint(1) DEFAULT 1,
-  `pre_authorization_required` tinyint(1) DEFAULT 0,
-  `exclusions` text,
-  `documents_path` varchar(500) DEFAULT NULL,
-  `is_active` tinyint(1) NOT NULL DEFAULT 1,
-  `created_by` int(11) DEFAULT NULL,
-  `created_at` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
-  `updated_at` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  `is_active` tinyint(1) DEFAULT 1,
+  `created_by` int(11) NOT NULL,
+  `created_at` timestamp NOT NULL DEFAULT current_timestamp(),
+  `updated_at` timestamp NOT NULL DEFAULT current_timestamp() ON UPDATE current_timestamp(),
   PRIMARY KEY (`id`),
   UNIQUE KEY `policy_number` (`policy_number`),
   KEY `patient_id` (`patient_id`),
@@ -357,353 +580,137 @@ CREATE TABLE `patient_insurance_policies` (
 -- Table structure for table `insurance_claims`
 -- --------------------------------------------------------
 
+DROP TABLE IF EXISTS `insurance_claims`;
 CREATE TABLE `insurance_claims` (
   `id` int(11) NOT NULL AUTO_INCREMENT,
   `claim_number` varchar(50) NOT NULL,
   `patient_id` int(11) NOT NULL,
-  `policy_id` int(11) NOT NULL,
   `insurance_company_id` int(11) NOT NULL,
+  `policy_id` int(11) NOT NULL,
   `bill_id` int(11) DEFAULT NULL,
-  `appointment_id` int(11) DEFAULT NULL,
-  `claim_type` enum('cashless','reimbursement','emergency') DEFAULT 'cashless',
-  `treatment_type` enum('outpatient','inpatient','emergency','surgery','diagnostic') DEFAULT 'outpatient',
-  `admission_date` date DEFAULT NULL,
-  `discharge_date` date DEFAULT NULL,
-  `diagnosis` text,
-  `treatment_details` text,
-  `claimed_amount` decimal(12,2) NOT NULL DEFAULT 0.00,
-  `approved_amount` decimal(12,2) DEFAULT 0.00,
+  `claim_date` date NOT NULL,
+  `service_date` date NOT NULL,
+  `diagnosis` text DEFAULT NULL,
+  `treatment_details` text DEFAULT NULL,
+  `claimed_amount` decimal(10,2) NOT NULL DEFAULT 0.00,
+  `approved_amount` decimal(10,2) DEFAULT 0.00,
   `deductible_amount` decimal(10,2) DEFAULT 0.00,
   `co_payment_amount` decimal(10,2) DEFAULT 0.00,
-  `final_settlement_amount` decimal(12,2) DEFAULT 0.00,
-  `status` enum('pending','under_review','approved','rejected','paid','cancelled') DEFAULT 'pending',
-  `submission_date` date NOT NULL,
-  `processed_date` date DEFAULT NULL,
+  `settlement_amount` decimal(10,2) DEFAULT 0.00,
+  `status` enum('pending','under_review','approved','rejected','settled') DEFAULT 'pending',
+  `rejection_reason` text DEFAULT NULL,
   `settlement_date` date DEFAULT NULL,
-  `rejection_reason` text,
-  `notes` text,
-  `documents_submitted` text,
-  `pre_authorization_number` varchar(100) DEFAULT NULL,
-  `pre_authorization_amount` decimal(10,2) DEFAULT 0.00,
-  `created_by` int(11) DEFAULT NULL,
-  `processed_by` int(11) DEFAULT NULL,
-  `created_at` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
-  `updated_at` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  `documents_submitted` text DEFAULT NULL,
+  `notes` text DEFAULT NULL,
+  `created_by` int(11) NOT NULL,
+  `reviewed_by` int(11) DEFAULT NULL,
+  `created_at` timestamp NOT NULL DEFAULT current_timestamp(),
+  `updated_at` timestamp NOT NULL DEFAULT current_timestamp() ON UPDATE current_timestamp(),
   PRIMARY KEY (`id`),
   UNIQUE KEY `claim_number` (`claim_number`),
   KEY `patient_id` (`patient_id`),
-  KEY `policy_id` (`policy_id`),
   KEY `insurance_company_id` (`insurance_company_id`),
+  KEY `policy_id` (`policy_id`),
   KEY `bill_id` (`bill_id`),
-  KEY `appointment_id` (`appointment_id`),
   KEY `created_by` (`created_by`),
-  KEY `processed_by` (`processed_by`),
+  KEY `reviewed_by` (`reviewed_by`),
   CONSTRAINT `insurance_claims_ibfk_1` FOREIGN KEY (`patient_id`) REFERENCES `patients` (`id`),
-  CONSTRAINT `insurance_claims_ibfk_2` FOREIGN KEY (`policy_id`) REFERENCES `patient_insurance_policies` (`id`),
-  CONSTRAINT `insurance_claims_ibfk_3` FOREIGN KEY (`insurance_company_id`) REFERENCES `insurance_companies` (`id`),
-  CONSTRAINT `insurance_claims_ibfk_4` FOREIGN KEY (`bill_id`) REFERENCES `billing` (`id`),
-  CONSTRAINT `insurance_claims_ibfk_5` FOREIGN KEY (`appointment_id`) REFERENCES `appointments` (`id`),
-  CONSTRAINT `insurance_claims_ibfk_6` FOREIGN KEY (`created_by`) REFERENCES `users` (`id`),
-  CONSTRAINT `insurance_claims_ibfk_7` FOREIGN KEY (`processed_by`) REFERENCES `users` (`id`)
+  CONSTRAINT `insurance_claims_ibfk_2` FOREIGN KEY (`insurance_company_id`) REFERENCES `insurance_companies` (`id`),
+  CONSTRAINT `insurance_claims_ibfk_3` FOREIGN KEY (`policy_id`) REFERENCES `patient_insurance_policies` (`id`),
+  CONSTRAINT `insurance_claims_ibfk_4` FOREIGN KEY (`bill_id`) REFERENCES `billing` (`id`) ON DELETE SET NULL,
+  CONSTRAINT `insurance_claims_ibfk_5` FOREIGN KEY (`created_by`) REFERENCES `users` (`id`),
+  CONSTRAINT `insurance_claims_ibfk_6` FOREIGN KEY (`reviewed_by`) REFERENCES `users` (`id`) ON DELETE SET NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- --------------------------------------------------------
 -- Table structure for table `insurance_pre_authorizations`
 -- --------------------------------------------------------
 
+DROP TABLE IF EXISTS `insurance_pre_authorizations`;
 CREATE TABLE `insurance_pre_authorizations` (
   `id` int(11) NOT NULL AUTO_INCREMENT,
   `authorization_number` varchar(50) NOT NULL,
   `patient_id` int(11) NOT NULL,
-  `policy_id` int(11) NOT NULL,
   `insurance_company_id` int(11) NOT NULL,
-  `doctor_id` int(11) DEFAULT NULL,
-  `treatment_type` varchar(200) NOT NULL,
-  `diagnosis` text,
+  `policy_id` int(11) NOT NULL,
+  `doctor_id` int(11) NOT NULL,
+  `request_date` date NOT NULL,
+  `treatment_date` date DEFAULT NULL,
+  `diagnosis` text NOT NULL,
+  `proposed_treatment` text NOT NULL,
   `estimated_cost` decimal(10,2) NOT NULL DEFAULT 0.00,
   `authorized_amount` decimal(10,2) DEFAULT 0.00,
-  `valid_from` date NOT NULL,
-  `valid_until` date NOT NULL,
-  `status` enum('pending','approved','rejected','expired','used') DEFAULT 'pending',
+  `status` enum('pending','approved','rejected','expired') DEFAULT 'pending',
   `approval_date` date DEFAULT NULL,
-  `rejection_reason` text,
-  `conditions` text,
-  `notes` text,
-  `created_by` int(11) DEFAULT NULL,
-  `approved_by` int(11) DEFAULT NULL,
-  `created_at` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
-  `updated_at` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  `expiry_date` date DEFAULT NULL,
+  `rejection_reason` text DEFAULT NULL,
+  `conditions` text DEFAULT NULL,
+  `notes` text DEFAULT NULL,
+  `created_by` int(11) NOT NULL,
+  `reviewed_by` int(11) DEFAULT NULL,
+  `created_at` timestamp NOT NULL DEFAULT current_timestamp(),
+  `updated_at` timestamp NOT NULL DEFAULT current_timestamp() ON UPDATE current_timestamp(),
   PRIMARY KEY (`id`),
   UNIQUE KEY `authorization_number` (`authorization_number`),
   KEY `patient_id` (`patient_id`),
-  KEY `policy_id` (`policy_id`),
   KEY `insurance_company_id` (`insurance_company_id`),
+  KEY `policy_id` (`policy_id`),
   KEY `doctor_id` (`doctor_id`),
   KEY `created_by` (`created_by`),
-  KEY `approved_by` (`approved_by`),
+  KEY `reviewed_by` (`reviewed_by`),
   CONSTRAINT `insurance_pre_authorizations_ibfk_1` FOREIGN KEY (`patient_id`) REFERENCES `patients` (`id`),
-  CONSTRAINT `insurance_pre_authorizations_ibfk_2` FOREIGN KEY (`policy_id`) REFERENCES `patient_insurance_policies` (`id`),
-  CONSTRAINT `insurance_pre_authorizations_ibfk_3` FOREIGN KEY (`insurance_company_id`) REFERENCES `insurance_companies` (`id`),
+  CONSTRAINT `insurance_pre_authorizations_ibfk_2` FOREIGN KEY (`insurance_company_id`) REFERENCES `insurance_companies` (`id`),
+  CONSTRAINT `insurance_pre_authorizations_ibfk_3` FOREIGN KEY (`policy_id`) REFERENCES `patient_insurance_policies` (`id`),
   CONSTRAINT `insurance_pre_authorizations_ibfk_4` FOREIGN KEY (`doctor_id`) REFERENCES `doctors` (`id`),
   CONSTRAINT `insurance_pre_authorizations_ibfk_5` FOREIGN KEY (`created_by`) REFERENCES `users` (`id`),
-  CONSTRAINT `insurance_pre_authorizations_ibfk_6` FOREIGN KEY (`approved_by`) REFERENCES `users` (`id`)
+  CONSTRAINT `insurance_pre_authorizations_ibfk_6` FOREIGN KEY (`reviewed_by`) REFERENCES `users` (`id`) ON DELETE SET NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- ============================================================================
--- PHARMACY MANAGEMENT TABLES
--- ============================================================================
-
--- --------------------------------------------------------
--- Table structure for table `pharmacy`
--- --------------------------------------------------------
-
-CREATE TABLE `pharmacy` (
-  `id` int(11) NOT NULL AUTO_INCREMENT,
-  `medicine_name` varchar(200) NOT NULL,
-  `generic_name` varchar(200) DEFAULT NULL,
-  `category` varchar(100) DEFAULT NULL,
-  `manufacturer` varchar(200) DEFAULT NULL,
-  `batch_number` varchar(50) DEFAULT NULL,
-  `expiry_date` date DEFAULT NULL,
-  `unit_price` decimal(10,2) NOT NULL DEFAULT 0.00,
-  `stock_quantity` int(11) NOT NULL DEFAULT 0,
-  `min_stock_level` int(11) DEFAULT 10,
-  `description` text,
-  `is_active` tinyint(1) NOT NULL DEFAULT 1,
-  `created_by` int(11) DEFAULT NULL,
-  `created_at` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
-  `updated_at` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-  PRIMARY KEY (`id`),
-  KEY `created_by` (`created_by`),
-  CONSTRAINT `pharmacy_ibfk_1` FOREIGN KEY (`created_by`) REFERENCES `users` (`id`)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
-
--- --------------------------------------------------------
--- Table structure for table `pharmacy_sales`
--- --------------------------------------------------------
-
-CREATE TABLE `pharmacy_sales` (
-  `id` int(11) NOT NULL AUTO_INCREMENT,
-  `sale_id` varchar(20) NOT NULL,
-  `patient_id` int(11) DEFAULT NULL,
-  `prescription_id` int(11) DEFAULT NULL,
-  `total_amount` decimal(10,2) NOT NULL DEFAULT 0.00,
-  `discount_amount` decimal(10,2) DEFAULT 0.00,
-  `tax_amount` decimal(10,2) DEFAULT 0.00,
-  `final_amount` decimal(10,2) NOT NULL DEFAULT 0.00,
-  `payment_method` enum('cash','card','upi','insurance') DEFAULT 'cash',
-  `payment_status` enum('pending','paid','partial') NOT NULL DEFAULT 'pending',
-  `sale_date` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
-  `created_by` int(11) DEFAULT NULL,
-  `created_at` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
-  `updated_at` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-  PRIMARY KEY (`id`),
-  UNIQUE KEY `sale_id` (`sale_id`),
-  KEY `patient_id` (`patient_id`),
-  KEY `prescription_id` (`prescription_id`),
-  KEY `created_by` (`created_by`),
-  CONSTRAINT `pharmacy_sales_ibfk_1` FOREIGN KEY (`patient_id`) REFERENCES `patients` (`id`),
-  CONSTRAINT `pharmacy_sales_ibfk_3` FOREIGN KEY (`created_by`) REFERENCES `users` (`id`)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
-
--- --------------------------------------------------------
--- Table structure for table `pharmacy_sale_items`
--- --------------------------------------------------------
-
-CREATE TABLE `pharmacy_sale_items` (
-  `id` int(11) NOT NULL AUTO_INCREMENT,
-  `sale_id` int(11) NOT NULL,
-  `medicine_id` int(11) NOT NULL,
-  `quantity` int(11) NOT NULL DEFAULT 1,
-  `unit_price` decimal(10,2) NOT NULL DEFAULT 0.00,
-  `total_price` decimal(10,2) NOT NULL DEFAULT 0.00,
-  `created_at` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
-  PRIMARY KEY (`id`),
-  KEY `sale_id` (`sale_id`),
-  KEY `medicine_id` (`medicine_id`),
-  CONSTRAINT `pharmacy_sale_items_ibfk_1` FOREIGN KEY (`sale_id`) REFERENCES `pharmacy_sales` (`id`),
-  CONSTRAINT `pharmacy_sale_items_ibfk_2` FOREIGN KEY (`medicine_id`) REFERENCES `pharmacy` (`id`)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
-
--- ============================================================================
--- PRESCRIPTION MANAGEMENT TABLES
--- ============================================================================
-
--- --------------------------------------------------------
--- Table structure for table `prescriptions`
--- --------------------------------------------------------
-
-CREATE TABLE `prescriptions` (
-  `id` int(11) NOT NULL AUTO_INCREMENT,
-  `prescription_id` varchar(20) NOT NULL,
-  `patient_id` int(11) NOT NULL,
-  `doctor_id` int(11) NOT NULL,
-  `appointment_id` int(11) DEFAULT NULL,
-  `diagnosis` text,
-  `notes` text,
-  `status` enum('pending','dispensed','cancelled') DEFAULT 'pending',
-  `prescribed_by` int(11) DEFAULT NULL,
-  `created_at` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
-  `updated_at` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-  PRIMARY KEY (`id`),
-  UNIQUE KEY `prescription_id` (`prescription_id`),
-  KEY `patient_id` (`patient_id`),
-  KEY `doctor_id` (`doctor_id`),
-  KEY `appointment_id` (`appointment_id`),
-  KEY `prescribed_by` (`prescribed_by`),
-  CONSTRAINT `prescriptions_ibfk_1` FOREIGN KEY (`patient_id`) REFERENCES `patients` (`id`),
-  CONSTRAINT `prescriptions_ibfk_2` FOREIGN KEY (`doctor_id`) REFERENCES `doctors` (`id`),
-  CONSTRAINT `prescriptions_ibfk_3` FOREIGN KEY (`appointment_id`) REFERENCES `appointments` (`id`),
-  CONSTRAINT `prescriptions_ibfk_4` FOREIGN KEY (`prescribed_by`) REFERENCES `users` (`id`)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
-
--- --------------------------------------------------------
--- Table structure for table `prescription_details`
--- --------------------------------------------------------
-
-CREATE TABLE `prescription_details` (
-  `id` int(11) NOT NULL AUTO_INCREMENT,
-  `prescription_id` int(11) NOT NULL,
-  `medicine_id` int(11) NOT NULL,
-  `dosage` varchar(100) NOT NULL,
-  `frequency` varchar(100) NOT NULL,
-  `duration` varchar(100) NOT NULL,
-  `instructions` text,
-  `created_at` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
-  PRIMARY KEY (`id`),
-  KEY `prescription_id` (`prescription_id`),
-  KEY `medicine_id` (`medicine_id`),
-  CONSTRAINT `prescription_details_ibfk_1` FOREIGN KEY (`prescription_id`) REFERENCES `prescriptions` (`id`),
-  CONSTRAINT `prescription_details_ibfk_2` FOREIGN KEY (`medicine_id`) REFERENCES `pharmacy` (`id`)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
-
--- ============================================================================
--- LABORATORY MANAGEMENT TABLES
--- ============================================================================
-
--- --------------------------------------------------------
--- Table structure for table `laboratory`
--- --------------------------------------------------------
-
-CREATE TABLE `laboratory` (
-  `id` int(11) NOT NULL AUTO_INCREMENT,
-  `test_name` varchar(200) NOT NULL,
-  `test_category` varchar(100) DEFAULT NULL,
-  `normal_range` varchar(200) DEFAULT NULL,
-  `unit` varchar(50) DEFAULT NULL,
-  `price` decimal(10,2) NOT NULL DEFAULT 0.00,
-  `description` text,
-  `is_active` tinyint(1) NOT NULL DEFAULT 1,
-  `created_by` int(11) DEFAULT NULL,
-  `created_at` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
-  `updated_at` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-  PRIMARY KEY (`id`),
-  KEY `created_by` (`created_by`),
-  CONSTRAINT `laboratory_ibfk_1` FOREIGN KEY (`created_by`) REFERENCES `users` (`id`)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
-
--- --------------------------------------------------------
--- Table structure for table `laboratory_results`
--- --------------------------------------------------------
-
-CREATE TABLE `laboratory_results` (
-  `id` int(11) NOT NULL AUTO_INCREMENT,
-  `result_id` varchar(20) NOT NULL,
-  `patient_id` int(11) NOT NULL,
-  `test_id` int(11) NOT NULL,
-  `doctor_id` int(11) DEFAULT NULL,
-  `appointment_id` int(11) DEFAULT NULL,
-  `test_date` date NOT NULL,
-  `result_value` varchar(200) DEFAULT NULL,
-  `status` enum('pending','in_progress','completed','cancelled') DEFAULT 'pending',
-  `notes` text,
-  `conducted_by` int(11) DEFAULT NULL,
-  `created_at` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
-  `updated_at` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-  PRIMARY KEY (`id`),
-  UNIQUE KEY `result_id` (`result_id`),
-  KEY `patient_id` (`patient_id`),
-  KEY `test_id` (`test_id`),
-  KEY `doctor_id` (`doctor_id`),
-  KEY `appointment_id` (`appointment_id`),
-  KEY `conducted_by` (`conducted_by`),
-  CONSTRAINT `laboratory_results_ibfk_1` FOREIGN KEY (`patient_id`) REFERENCES `patients` (`id`),
-  CONSTRAINT `laboratory_results_ibfk_2` FOREIGN KEY (`test_id`) REFERENCES `laboratory` (`id`),
-  CONSTRAINT `laboratory_results_ibfk_3` FOREIGN KEY (`doctor_id`) REFERENCES `doctors` (`id`),
-  CONSTRAINT `laboratory_results_ibfk_4` FOREIGN KEY (`appointment_id`) REFERENCES `appointments` (`id`),
-  CONSTRAINT `laboratory_results_ibfk_5` FOREIGN KEY (`conducted_by`) REFERENCES `users` (`id`)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
-
--- ============================================================================
--- EQUIPMENT MANAGEMENT TABLES
--- ============================================================================
-
--- --------------------------------------------------------
--- Table structure for table `equipment`
--- --------------------------------------------------------
-
-CREATE TABLE `equipment` (
-  `id` int(11) NOT NULL AUTO_INCREMENT,
-  `equipment_id` varchar(20) NOT NULL,
-  `equipment_name` varchar(200) NOT NULL,
-  `category` varchar(100) DEFAULT NULL,
-  `manufacturer` varchar(200) DEFAULT NULL,
-  `model_number` varchar(100) DEFAULT NULL,
-  `serial_number` varchar(100) DEFAULT NULL,
-  `purchase_date` date DEFAULT NULL,
-  `purchase_price` decimal(10,2) DEFAULT 0.00,
-  `warranty_expiry` date DEFAULT NULL,
-  `location` varchar(200) DEFAULT NULL,
-  `status` enum('active','maintenance','repair','retired') NOT NULL DEFAULT 'active',
-  `description` text,
-  `is_active` tinyint(1) NOT NULL DEFAULT 1,
-  `created_by` int(11) DEFAULT NULL,
-  `created_at` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
-  `updated_at` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-  PRIMARY KEY (`id`),
-  UNIQUE KEY `equipment_id` (`equipment_id`),
-  KEY `created_by` (`created_by`),
-  CONSTRAINT `equipment_ibfk_1` FOREIGN KEY (`created_by`) REFERENCES `users` (`id`)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
-
--- ============================================================================
--- SYSTEM TABLES
+-- ADDITIONAL TABLES
 -- ============================================================================
 
 -- --------------------------------------------------------
 -- Table structure for table `activity_logs`
 -- --------------------------------------------------------
 
+DROP TABLE IF EXISTS `activity_logs`;
 CREATE TABLE `activity_logs` (
   `id` int(11) NOT NULL AUTO_INCREMENT,
-  `user_id` int(11) NOT NULL,
+  `user_id` int(11) DEFAULT NULL,
   `action` varchar(100) NOT NULL,
-  `description` text,
-  `module` varchar(50) DEFAULT 'system',
+  `table_name` varchar(50) DEFAULT NULL,
+  `record_id` int(11) DEFAULT NULL,
+  `old_values` text DEFAULT NULL,
+  `new_values` text DEFAULT NULL,
   `ip_address` varchar(45) DEFAULT NULL,
-  `user_agent` text,
-  `created_at` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  `user_agent` text DEFAULT NULL,
+  `created_at` timestamp NOT NULL DEFAULT current_timestamp(),
   PRIMARY KEY (`id`),
   KEY `user_id` (`user_id`),
-  CONSTRAINT `activity_logs_ibfk_1` FOREIGN KEY (`user_id`) REFERENCES `users` (`id`)
+  KEY `action` (`action`),
+  KEY `table_name` (`table_name`),
+  CONSTRAINT `activity_logs_ibfk_1` FOREIGN KEY (`user_id`) REFERENCES `users` (`id`) ON DELETE SET NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- --------------------------------------------------------
 -- Table structure for table `notifications`
 -- --------------------------------------------------------
 
+DROP TABLE IF EXISTS `notifications`;
 CREATE TABLE `notifications` (
   `id` int(11) NOT NULL AUTO_INCREMENT,
   `user_id` int(11) NOT NULL,
   `title` varchar(200) NOT NULL,
   `message` text NOT NULL,
-  `type` enum('info','success','warning','error') NOT NULL DEFAULT 'info',
-  `is_read` tinyint(1) NOT NULL DEFAULT 0,
-  `created_at` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
-  `read_at` timestamp NULL DEFAULT NULL,
+  `type` enum('info','success','warning','error') DEFAULT 'info',
+  `is_read` tinyint(1) DEFAULT 0,
+  `action_url` varchar(500) DEFAULT NULL,
+  `created_at` timestamp NOT NULL DEFAULT current_timestamp(),
   PRIMARY KEY (`id`),
   KEY `user_id` (`user_id`),
-  CONSTRAINT `notifications_ibfk_1` FOREIGN KEY (`user_id`) REFERENCES `users` (`id`)
+  KEY `is_read` (`is_read`),
+  CONSTRAINT `notifications_ibfk_1` FOREIGN KEY (`user_id`) REFERENCES `users` (`id`) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- ============================================================================
@@ -711,163 +718,188 @@ CREATE TABLE `notifications` (
 -- ============================================================================
 
 -- Insert roles
-INSERT INTO `roles` (`id`, `role_name`, `role_display_name`, `description`) VALUES
-(1, 'admin', 'Administrator', 'Full system access'),
-(2, 'doctor', 'Doctor', 'Medical professional with patient access'),
-(3, 'nurse', 'Nurse', 'Nursing staff with limited patient access'),
-(4, 'patient', 'Patient', 'Hospital patient with limited access'),
-(5, 'receptionist', 'Receptionist', 'Front desk staff for appointments and billing'),
-(6, 'pharmacy_staff', 'Pharmacy Staff', 'Pharmacy management access'),
-(7, 'lab_technician', 'Lab Technician', 'Laboratory test management'),
-(8, 'intern_doctor', 'Intern Doctor', 'Medical intern with supervised access'),
-(9, 'intern_pharmacy', 'Pharmacy Intern', 'Pharmacy intern with limited access'),
-(10, 'intern_lab', 'Lab Intern', 'Laboratory intern with limited access');
+INSERT INTO `roles` (`role_name`, `role_display`, `permissions`, `is_active`) VALUES
+('admin', 'Administrator', 'all', 1),
+('doctor', 'Doctor', 'patients,appointments,prescriptions,lab_results', 1),
+('nurse', 'Nurse', 'patients,appointments,basic_care', 1),
+('receptionist', 'Receptionist', 'patients,appointments,billing', 1),
+('pharmacy_staff', 'Pharmacy Staff', 'pharmacy,prescriptions', 1),
+('lab_technician', 'Lab Technician', 'laboratory,lab_results', 1),
+('patient', 'Patient', 'view_own_records', 1),
+('intern_doctor', 'Intern Doctor', 'patients,appointments,prescriptions', 1),
+('intern_pharmacy', 'Intern Pharmacy', 'pharmacy', 1),
+('intern_lab', 'Intern Lab', 'laboratory', 1);
 
--- Insert users (password is 'admin' for all - $2y$10$92IXUNpkjO0rOQ5byMi.Ye4oKoEa3Ro9llC/.og/at2.uheWG/igi)
-INSERT INTO `users` (`id`, `username`, `email`, `password_hash`, `role_id`, `first_name`, `last_name`) VALUES
-(1, 'admin@hospital.com', 'admin@hospital.com', '$2y$10$92IXUNpkjO0rOQ5byMi.Ye4oKoEa3Ro9llC/.og/at2.uheWG/igi', 1, 'System', 'Administrator'),
-(2, 'doctor1@hospital.com', 'doctor1@hospital.com', '$2y$10$92IXUNpkjO0rOQ5byMi.Ye4oKoEa3Ro9llC/.og/at2.uheWG/igi', 2, 'Dr. John', 'Smith'),
-(3, 'nurse1@hospital.com', 'nurse1@hospital.com', '$2y$10$92IXUNpkjO0rOQ5byMi.Ye4oKoEa3Ro9llC/.og/at2.uheWG/igi', 3, 'Mary', 'Johnson'),
-(4, 'patient1@hospital.com', 'patient1@hospital.com', '$2y$10$92IXUNpkjO0rOQ5byMi.Ye4oKoEa3Ro9llC/.og/at2.uheWG/igi', 4, 'Robert', 'Wilson'),
-(5, 'reception@hospital.com', 'reception@hospital.com', '$2y$10$92IXUNpkjO0rOQ5byMi.Ye4oKoEa3Ro9llC/.og/at2.uheWG/igi', 5, 'Sarah', 'Davis'),
-(6, 'pharmacy@hospital.com', 'pharmacy@hospital.com', '$2y$10$92IXUNpkjO0rOQ5byMi.Ye4oKoEa3Ro9llC/.og/at2.uheWG/igi', 6, 'Anna', 'Rodriguez'),
-(7, 'lab@hospital.com', 'lab@hospital.com', '$2y$10$92IXUNpkjO0rOQ5byMi.Ye4oKoEa3Ro9llC/.og/at2.uheWG/igi', 7, 'Mark', 'Garcia');
-
--- Insert doctors
-INSERT INTO `doctors` (`id`, `doctor_name`, `specialization`, `qualification`, `phone`, `email`, `consultation_fee`, `experience_years`, `created_by`) VALUES
-(1, 'Dr. John Smith', 'Cardiology', 'MBBS, MD Cardiology', '+1234567890', 'doctor1@hospital.com', 500.00, 10, 1),
-(2, 'Dr. Emily Johnson', 'Pediatrics', 'MBBS, MD Pediatrics', '+1234567891', 'emily.johnson@hospital.com', 400.00, 8, 1),
-(3, 'Dr. Michael Brown', 'Orthopedics', 'MBBS, MS Orthopedics', '+1234567892', 'michael.brown@hospital.com', 600.00, 12, 1),
-(4, 'Dr. Sarah Wilson', 'Dermatology', 'MBBS, MD Dermatology', '+1234567893', 'sarah.wilson@hospital.com', 450.00, 7, 1),
-(5, 'Dr. David Lee', 'Neurology', 'MBBS, DM Neurology', '+1234567894', 'david.lee@hospital.com', 700.00, 15, 1);
+-- Insert users with proper login credentials
+INSERT INTO `users` (`username`, `email`, `password`, `role`, `role_display`, `is_active`) VALUES
+('admin', 'admin@hospital.com', '$2y$10$92IXUNpkjO0rOQ5byMi.Ye4oKoEa3Ro9llC/.og/at2.uheWG/igi', 'admin', 'Administrator', 1),
+('dr_smith', 'dr.smith@hospital.com', '$2y$10$92IXUNpkjO0rOQ5byMi.Ye4oKoEa3Ro9llC/.og/at2.uheWG/igi', 'doctor', 'Doctor', 1),
+('dr_johnson', 'dr.johnson@hospital.com', '$2y$10$92IXUNpkjO0rOQ5byMi.Ye4oKoEa3Ro9llC/.og/at2.uheWG/igi', 'doctor', 'Doctor', 1),
+('nurse_mary', 'mary@hospital.com', '$2y$10$92IXUNpkjO0rOQ5byMi.Ye4oKoEa3Ro9llC/.og/at2.uheWG/igi', 'nurse', 'Nurse', 1),
+('receptionist', 'reception@hospital.com', '$2y$10$92IXUNpkjO0rOQ5byMi.Ye4oKoEa3Ro9llC/.og/at2.uheWG/igi', 'receptionist', 'Receptionist', 1),
+('pharmacy', 'pharmacy@hospital.com', '$2y$10$92IXUNpkjO0rOQ5byMi.Ye4oKoEa3Ro9llC/.og/at2.uheWG/igi', 'pharmacy_staff', 'Pharmacy Staff', 1),
+('lab_tech', 'lab@hospital.com', '$2y$10$92IXUNpkjO0rOQ5byMi.Ye4oKoEa3Ro9llC/.og/at2.uheWG/igi', 'lab_technician', 'Lab Technician', 1),
+('patient1', 'john.doe@email.com', '$2y$10$92IXUNpkjO0rOQ5byMi.Ye4oKoEa3Ro9llC/.og/at2.uheWG/igi', 'patient', 'Patient', 1),
+('patient2', 'jane.smith@email.com', '$2y$10$92IXUNpkjO0rOQ5byMi.Ye4oKoEa3Ro9llC/.og/at2.uheWG/igi', 'patient', 'Patient', 1);
 
 -- Insert patients
-INSERT INTO `patients` (`id`, `patient_id`, `first_name`, `last_name`, `email`, `phone`, `date_of_birth`, `gender`, `blood_group`, `created_by`) VALUES
-(1, 'PAT0001', 'Robert', 'Wilson', 'patient1@hospital.com', '+1234567895', '1985-06-15', 'male', 'O+', 1),
-(2, 'PAT0002', 'Jennifer', 'Martinez', 'jennifer.martinez@email.com', '+1234567896', '1990-03-22', 'female', 'A+', 1),
-(3, 'PAT0003', 'William', 'Anderson', 'william.anderson@email.com', '+1234567897', '1978-11-08', 'male', 'B+', 1),
-(4, 'PAT0004', 'Lisa', 'Taylor', 'lisa.taylor@email.com', '+1234567898', '1992-09-14', 'female', 'AB+', 1),
-(5, 'PAT0005', 'James', 'Thomas', 'james.thomas@email.com', '+1234567899', '1988-12-03', 'male', 'O-', 1);
+INSERT INTO `patients` (`patient_id`, `first_name`, `last_name`, `email`, `phone`, `date_of_birth`, `gender`, `blood_group`, `address`, `emergency_contact_name`, `emergency_contact_phone`, `medical_history`, `allergies`) VALUES
+('PAT001', 'John', 'Doe', 'john.doe@email.com', '+91-9876543210', '1990-05-15', 'male', 'O+', '123 Main Street, City, State 12345', 'Jane Doe', '+91-9876543211', 'No significant medical history', 'None known'),
+('PAT002', 'Jane', 'Smith', 'jane.smith@email.com', '+91-9876543212', '1985-08-22', 'female', 'A+', '456 Oak Avenue, City, State 12345', 'Bob Smith', '+91-9876543213', 'Hypertension', 'Penicillin'),
+('PAT003', 'Robert', 'Johnson', 'robert.j@email.com', '+91-9876543214', '1978-12-10', 'male', 'B+', '789 Pine Road, City, State 12345', 'Mary Johnson', '+91-9876543215', 'Diabetes Type 2', 'None known'),
+('PAT004', 'Emily', 'Davis', 'emily.d@email.com', '+91-9876543216', '1992-03-18', 'female', 'AB+', '321 Elm Street, City, State 12345', 'Tom Davis', '+91-9876543217', 'Asthma', 'Dust, Pollen'),
+('PAT005', 'Michael', 'Wilson', 'michael.w@email.com', '+91-9876543218', '1988-07-25', 'male', 'O-', '654 Maple Lane, City, State 12345', 'Sarah Wilson', '+91-9876543219', 'No significant medical history', 'Shellfish');
+
+-- Insert doctors
+INSERT INTO `doctors` (`user_id`, `doctor_name`, `specialization`, `qualification`, `experience_years`, `consultation_fee`, `phone`, `email`, `schedule`) VALUES
+(2, 'Dr. John Smith', 'Cardiology', 'MBBS, MD Cardiology', 15, 1500.00, '+91-9876543220', 'dr.smith@hospital.com', 'Mon-Fri: 9:00 AM - 5:00 PM'),
+(3, 'Dr. Sarah Johnson', 'Pediatrics', 'MBBS, MD Pediatrics', 12, 1200.00, '+91-9876543221', 'dr.johnson@hospital.com', 'Mon-Sat: 10:00 AM - 6:00 PM'),
+(NULL, 'Dr. Michael Brown', 'Orthopedics', 'MBBS, MS Orthopedics', 18, 1800.00, '+91-9876543222', 'dr.brown@hospital.com', 'Tue-Sat: 8:00 AM - 4:00 PM'),
+(NULL, 'Dr. Lisa Davis', 'Dermatology', 'MBBS, MD Dermatology', 10, 1000.00, '+91-9876543223', 'dr.davis@hospital.com', 'Mon-Wed-Fri: 11:00 AM - 7:00 PM'),
+(NULL, 'Dr. James Wilson', 'Neurology', 'MBBS, DM Neurology', 20, 2000.00, '+91-9876543224', 'dr.wilson@hospital.com', 'Mon-Thu: 9:00 AM - 3:00 PM');
 
 -- Insert staff
-INSERT INTO `staff` (`id`, `staff_id`, `first_name`, `last_name`, `email`, `phone`, `position`, `department`, `salary`, `date_of_joining`, `created_by`) VALUES
-(1, 'STF0001', 'Mary', 'Johnson', 'nurse1@hospital.com', '+1234567900', 'Senior Nurse', 'Nursing', 35000.00, '2020-01-15', 1),
-(2, 'STF0002', 'Sarah', 'Davis', 'reception@hospital.com', '+1234567901', 'Receptionist', 'Administration', 25000.00, '2021-03-10', 1),
-(3, 'STF0003', 'Mark', 'Garcia', 'mark.garcia@hospital.com', '+1234567902', 'Lab Technician', 'Laboratory', 30000.00, '2019-08-20', 1),
-(4, 'STF0004', 'Anna', 'Rodriguez', 'anna.rodriguez@hospital.com', '+1234567903', 'Pharmacist', 'Pharmacy', 40000.00, '2018-05-12', 1),
-(5, 'STF0005', 'Tom', 'Miller', 'tom.miller@hospital.com', '+1234567904', 'Cleaner', 'Maintenance', 20000.00, '2022-01-08', 1);
+INSERT INTO `staff` (`user_id`, `staff_id`, `first_name`, `last_name`, `email`, `phone`, `department`, `position`, `hire_date`, `salary`) VALUES
+(4, 'STAFF001', 'Mary', 'Johnson', 'mary@hospital.com', '+91-9876543225', 'Nursing', 'Senior Nurse', '2020-01-15', 45000.00),
+(5, 'STAFF002', 'David', 'Brown', 'reception@hospital.com', '+91-9876543226', 'Administration', 'Receptionist', '2021-03-10', 35000.00),
+(6, 'STAFF003', 'Lisa', 'Wilson', 'pharmacy@hospital.com', '+91-9876543227', 'Pharmacy', 'Pharmacist', '2019-06-20', 50000.00),
+(7, 'STAFF004', 'Tom', 'Davis', 'lab@hospital.com', '+91-9876543228', 'Laboratory', 'Lab Technician', '2020-09-05', 40000.00),
+(NULL, 'STAFF005', 'Anna', 'Taylor', 'anna@hospital.com', '+91-9876543229', 'Nursing', 'Nurse', '2022-01-12', 38000.00);
+
+-- Insert appointments
+INSERT INTO `appointments` (`patient_id`, `doctor_id`, `appointment_date`, `appointment_time`, `appointment_type`, `status`, `notes`, `created_by`) VALUES
+(1, 1, '2024-12-20', '10:00:00', 'consultation', 'completed', 'Regular checkup completed', 1),
+(2, 2, '2024-12-21', '11:30:00', 'follow_up', 'scheduled', 'Follow-up for hypertension', 1),
+(3, 1, '2024-12-22', '14:00:00', 'consultation', 'scheduled', 'Chest pain consultation', 1),
+(4, 2, '2024-12-23', '09:15:00', 'routine_checkup', 'scheduled', 'Annual pediatric checkup', 1),
+(5, 3, '2024-12-24', '15:30:00', 'consultation', 'completed', 'Knee pain consultation completed', 1);
 
 -- Insert pharmacy items
-INSERT INTO `pharmacy` (`id`, `medicine_name`, `generic_name`, `category`, `manufacturer`, `unit_price`, `stock_quantity`, `created_by`) VALUES
-(1, 'Paracetamol 500mg', 'Paracetamol', 'Analgesic', 'PharmaCorp', 2.50, 500, 1),
-(2, 'Amoxicillin 250mg', 'Amoxicillin', 'Antibiotic', 'MediLab', 15.00, 200, 1),
-(3, 'Ibuprofen 400mg', 'Ibuprofen', 'NSAID', 'HealthPharma', 5.00, 300, 1),
-(4, 'Cetirizine 10mg', 'Cetirizine', 'Antihistamine', 'AllergyMed', 3.00, 250, 1),
-(5, 'Omeprazole 20mg', 'Omeprazole', 'PPI', 'GastroMed', 8.00, 150, 1);
+INSERT INTO `pharmacy` (`medicine_name`, `generic_name`, `manufacturer`, `category`, `unit_price`, `stock_quantity`, `reorder_level`, `expiry_date`, `batch_number`) VALUES
+('Paracetamol 500mg', 'Paracetamol', 'ABC Pharma', 'Analgesic', 2.50, 1000, 100, '2025-12-31', 'PAR001'),
+('Amoxicillin 250mg', 'Amoxicillin', 'XYZ Medicines', 'Antibiotic', 8.75, 500, 50, '2025-06-30', 'AMX001'),
+('Aspirin 75mg', 'Acetylsalicylic Acid', 'DEF Pharma', 'Antiplatelet', 1.25, 800, 80, '2025-09-15', 'ASP001'),
+('Metformin 500mg', 'Metformin HCl', 'GHI Medicines', 'Antidiabetic', 3.20, 600, 60, '2025-11-20', 'MET001'),
+('Lisinopril 10mg', 'Lisinopril', 'JKL Pharma', 'ACE Inhibitor', 5.50, 400, 40, '2025-08-10', 'LIS001');
 
 -- Insert laboratory tests
-INSERT INTO `laboratory` (`id`, `test_name`, `test_category`, `normal_range`, `unit`, `price`, `created_by`) VALUES
-(1, 'Complete Blood Count', 'Hematology', 'Various', 'cells/μL', 300.00, 1),
-(2, 'Blood Sugar (Fasting)', 'Biochemistry', '70-100', 'mg/dL', 150.00, 1),
-(3, 'Lipid Profile', 'Biochemistry', 'Various', 'mg/dL', 400.00, 1),
-(4, 'Liver Function Test', 'Biochemistry', 'Various', 'U/L', 350.00, 1),
-(5, 'Kidney Function Test', 'Biochemistry', 'Various', 'mg/dL', 300.00, 1),
-(6, 'Thyroid Profile', 'Endocrinology', 'Various', 'μIU/mL', 450.00, 1),
-(7, 'Urine Analysis', 'Pathology', 'Normal', 'Various', 200.00, 1),
-(8, 'ECG', 'Cardiology', 'Normal', 'Various', 250.00, 1);
+INSERT INTO `laboratory` (`test_name`, `test_category`, `description`, `normal_range`, `unit`, `price`, `sample_type`, `preparation_instructions`) VALUES
+('Complete Blood Count', 'Hematology', 'Comprehensive blood analysis', 'Varies by component', 'Various', 500.00, 'Blood', 'No special preparation required'),
+('Lipid Profile', 'Biochemistry', 'Cholesterol and lipid analysis', 'Total Cholesterol: <200 mg/dL', 'mg/dL', 800.00, 'Blood', '12-hour fasting required'),
+('Liver Function Test', 'Biochemistry', 'Liver enzyme analysis', 'ALT: 7-56 U/L, AST: 10-40 U/L', 'U/L', 600.00, 'Blood', 'No special preparation required'),
+('Kidney Function Test', 'Biochemistry', 'Kidney function analysis', 'Creatinine: 0.6-1.2 mg/dL', 'mg/dL', 550.00, 'Blood', 'No special preparation required'),
+('Thyroid Function Test', 'Endocrinology', 'Thyroid hormone analysis', 'TSH: 0.4-4.0 mIU/L', 'mIU/L', 700.00, 'Blood', 'No special preparation required'),
+('Urine Analysis', 'Microbiology', 'Complete urine examination', 'No abnormal findings', 'Various', 300.00, 'Urine', 'Clean catch midstream sample'),
+('Blood Sugar (Fasting)', 'Biochemistry', 'Fasting glucose level', '70-100 mg/dL', 'mg/dL', 200.00, 'Blood', '8-12 hour fasting required'),
+('Blood Sugar (Random)', 'Biochemistry', 'Random glucose level', '<140 mg/dL', 'mg/dL', 150.00, 'Blood', 'No special preparation required');
 
 -- Insert equipment
-INSERT INTO `equipment` (`id`, `equipment_id`, `equipment_name`, `category`, `manufacturer`, `model_number`, `purchase_price`, `location`, `created_by`) VALUES
-(1, 'EQP0001', 'X-Ray Machine', 'Radiology', 'Siemens', 'XR-2000', 150000.00, 'Radiology Room 1', 1),
-(2, 'EQP0002', 'ECG Machine', 'Cardiology', 'Philips', 'ECG-Pro', 25000.00, 'Cardiology Room', 1),
-(3, 'EQP0003', 'Ultrasound Machine', 'Radiology', 'GE Healthcare', 'US-3000', 80000.00, 'Ultrasound Room', 1),
-(4, 'EQP0004', 'Blood Analyzer', 'Laboratory', 'Abbott', 'BA-500', 120000.00, 'Main Laboratory', 1),
-(5, 'EQP0005', 'Ventilator', 'ICU', 'Medtronic', 'V-200', 200000.00, 'ICU Ward', 1);
-
--- Insert sample appointments
-INSERT INTO `appointments` (`id`, `appointment_id`, `patient_id`, `doctor_id`, `appointment_date`, `appointment_time`, `appointment_type`, `reason`, `created_by`) VALUES
-(1, 'APT0001', 1, 1, '2024-02-15', '10:00:00', 'consultation', 'Chest pain consultation', 1),
-(2, 'APT0002', 2, 2, '2024-02-15', '11:00:00', 'routine_checkup', 'Regular pediatric checkup', 1),
-(3, 'APT0003', 3, 3, '2024-02-16', '09:30:00', 'follow_up', 'Post-surgery follow-up', 1),
-(4, 'APT0004', 4, 4, '2024-02-16', '14:00:00', 'consultation', 'Skin rash examination', 1),
-(5, 'APT0005', 5, 5, '2024-02-17', '15:30:00', 'consultation', 'Headache and dizziness', 1);
-
--- Insert sample bills
-INSERT INTO `billing` (`id`, `bill_id`, `patient_id`, `appointment_id`, `bill_date`, `total_amount`, `paid_amount`, `payment_status`, `payment_method`, `created_by`) VALUES
-(1, 'BILL0001', 1, 1, '2024-02-15', 750.00, 750.00, 'paid', 'cash', 1),
-(2, 'BILL0002', 2, 2, '2024-02-15', 600.00, 300.00, 'partial', 'card', 1),
-(3, 'BILL0003', 3, 3, '2024-02-16', 800.00, 0.00, 'pending', NULL, 1),
-(4, 'BILL0004', 4, 4, '2024-02-16', 650.00, 650.00, 'paid', 'upi', 1),
-(5, 'BILL0005', 5, 5, '2024-02-17', 950.00, 500.00, 'partial', 'insurance', 1);
-
--- Insert sample insurance companies
-INSERT INTO `insurance_companies` (`id`, `company_name`, `company_code`, `license_number`, `contact_email`, `contact_phone`, `coverage_types`, `cashless_limit`, `reimbursement_percentage`, `created_by`) VALUES
-(1, 'Star Health Insurance', 'STAR', 'LIC001234', 'claims@starhealth.in', '+91-80-12345678', 'Medical,Surgical,Emergency,Maternity', 500000.00, 80.00, 1),
-(2, 'HDFC ERGO Health Insurance', 'HDFC', 'LIC002345', 'health@hdfcergo.com', '+91-22-87654321', 'Medical,Surgical,Emergency,Critical Illness', 1000000.00, 85.00, 1),
-(3, 'ICICI Lombard Health Insurance', 'ICICI', 'LIC003456', 'claims@icicilombard.com', '+91-22-11223344', 'Medical,Surgical,Emergency,Dental,Vision', 750000.00, 80.00, 1),
-(4, 'New India Assurance', 'NIAC', 'LIC004567', 'health@newindia.co.in', '+91-11-55667788', 'Medical,Surgical,Emergency,Ayurveda', 300000.00, 75.00, 1),
-(5, 'United India Insurance', 'UIIC', 'LIC005678', 'claims@uiic.co.in', '+91-44-99887766', 'Medical,Surgical,Emergency,Maternity', 400000.00, 80.00, 1);
-
--- Insert sample patient insurance policies
-INSERT INTO `patient_insurance_policies` (`id`, `patient_id`, `insurance_company_id`, `policy_number`, `policy_holder_name`, `coverage_amount`, `deductible_amount`, `policy_start_date`, `expiry_date`, `premium_amount`, `created_by`) VALUES
-(1, 1, 1, 'STAR123456789', 'Robert Wilson', 500000.00, 5000.00, '2024-01-01', '2024-12-31', 25000.00, 1),
-(2, 2, 2, 'HDFC987654321', 'Jennifer Martinez', 1000000.00, 10000.00, '2024-02-01', '2025-01-31', 45000.00, 1),
-(3, 3, 3, 'ICICI456789123', 'William Anderson', 750000.00, 7500.00, '2024-01-15', '2025-01-14', 35000.00, 1),
-(4, 4, 4, 'NIAC789123456', 'Lisa Taylor', 300000.00, 3000.00, '2024-03-01', '2025-02-28', 18000.00, 1),
-(5, 5, 5, 'UIIC321654987', 'James Thomas', 400000.00, 4000.00, '2024-01-10', '2024-12-31', 22000.00, 1);
-
--- Insert sample insurance claims
-INSERT INTO `insurance_claims` (`id`, `claim_number`, `patient_id`, `policy_id`, `insurance_company_id`, `claim_type`, `treatment_type`, `diagnosis`, `claimed_amount`, `approved_amount`, `status`, `submission_date`, `created_by`) VALUES
-(1, 'CLM2024001', 1, 1, 1, 'cashless', 'outpatient', 'Hypertension consultation and medication', 15000.00, 12000.00, 'approved', '2024-01-15', 1),
-(2, 'CLM2024002', 2, 2, 2, 'reimbursement', 'inpatient', 'Appendectomy surgery', 85000.00, 80000.00, 'approved', '2024-02-10', 1),
-(3, 'CLM2024003', 3, 3, 3, 'cashless', 'diagnostic', 'MRI scan and blood tests', 25000.00, NULL, 'pending', '2024-02-20', 1),
-(4, 'CLM2024004', 4, 4, 4, 'emergency', 'emergency', 'Emergency treatment for accident', 45000.00, 35000.00, 'approved', '2024-02-05', 1),
-(5, 'CLM2024005', 5, 5, 5, 'cashless', 'outpatient', 'Diabetes management and consultation', 18000.00, NULL, 'under_review', '2024-02-18', 1);
-
--- Insert sample pre-authorizations
-INSERT INTO `insurance_pre_authorizations` (`id`, `authorization_number`, `patient_id`, `policy_id`, `insurance_company_id`, `treatment_type`, `diagnosis`, `estimated_cost`, `authorized_amount`, `valid_from`, `valid_until`, `status`, `created_by`) VALUES
-(1, 'AUTH2024001', 1, 1, 1, 'Cardiac Surgery', 'Coronary Artery Disease', 350000.00, 300000.00, '2024-03-01', '2024-03-31', 'approved', 1),
-(2, 'AUTH2024002', 2, 2, 2, 'Orthopedic Surgery', 'Knee Replacement', 250000.00, 200000.00, '2024-03-15', '2024-04-14', 'approved', 1),
-(3, 'AUTH2024003', 3, 3, 3, 'Cancer Treatment', 'Chemotherapy', 500000.00, NULL, '2024-03-10', '2024-04-09', 'pending', 1);
+INSERT INTO `equipment` (`equipment_name`, `equipment_id`, `category`, `manufacturer`, `model`, `serial_number`, `purchase_date`, `purchase_cost`, `warranty_expiry`, `status`, `location`, `last_maintenance`, `next_maintenance`) VALUES
+('X-Ray Machine', 'EQ001', 'Radiology', 'Siemens', 'MOBILETT XP Digital', 'SN123456', '2022-03-15', 1500000.00, '2025-03-15', 'active', 'Radiology Department', '2024-11-01', '2025-02-01'),
+('ECG Machine', 'EQ002', 'Cardiology', 'Philips', 'PageWriter TC70', 'SN789012', '2021-08-20', 350000.00, '2024-08-20', 'active', 'Cardiology Ward', '2024-10-15', '2025-01-15'),
+('Ultrasound Machine', 'EQ003', 'Radiology', 'GE Healthcare', 'LOGIQ P9', 'SN345678', '2023-01-10', 2500000.00, '2026-01-10', 'active', 'Ultrasound Room', '2024-12-01', '2025-03-01'),
+('Ventilator', 'EQ004', 'ICU', 'Medtronic', 'Puritan Bennett 980', 'SN901234', '2022-11-05', 800000.00, '2025-11-05', 'maintenance', 'ICU', '2024-11-20', '2024-12-20'),
+('Defibrillator', 'EQ005', 'Emergency', 'Zoll', 'R Series ALS', 'SN567890', '2023-06-12', 450000.00, '2026-06-12', 'active', 'Emergency Department', '2024-09-10', '2024-12-10');
 
 -- Insert sample prescriptions
-INSERT INTO `prescriptions` (`id`, `prescription_id`, `patient_id`, `doctor_id`, `diagnosis`, `notes`, `status`, `prescribed_by`) VALUES
-(1, 'PRES0001', 1, 1, 'Hypertension', 'Regular monitoring required', 'dispensed', 2),
-(2, 'PRES0002', 2, 2, 'Common Cold', 'Complete the course', 'pending', 2),
-(3, 'PRES0003', 3, 3, 'Post-operative care', 'Take as prescribed', 'dispensed', 2);
+INSERT INTO `prescriptions` (`prescription_id`, `patient_id`, `doctor_id`, `appointment_id`, `prescription_date`, `status`, `notes`, `prescribed_by`) VALUES
+('RX001', 1, 1, 1, '2024-12-20', 'dispensed', 'Post consultation medication', 2),
+('RX002', 2, 2, NULL, '2024-12-18', 'pending', 'Hypertension management', 3),
+('RX003', 3, 1, NULL, '2024-12-19', 'dispensed', 'Diabetes management', 2);
 
--- Insert sample prescription details
-INSERT INTO `prescription_details` (`prescription_id`, `medicine_id`, `dosage`, `frequency`, `duration`, `instructions`) VALUES
-(1, 1, '500mg', 'Twice daily', '7 days', 'Take after meals'),
-(1, 3, '400mg', 'Once daily', '5 days', 'Take with water'),
-(2, 2, '250mg', 'Three times daily', '5 days', 'Complete the course'),
-(2, 4, '10mg', 'Once daily', '3 days', 'Take at bedtime'),
-(3, 1, '500mg', 'As needed', '10 days', 'For pain relief');
+-- Insert prescription details
+INSERT INTO `prescription_details` (`prescription_id`, `medicine_id`, `dosage`, `frequency`, `duration`, `instructions`, `quantity`) VALUES
+(1, 1, '500mg', 'Twice daily', '5 days', 'Take after meals', 10),
+(1, 3, '75mg', 'Once daily', '30 days', 'Take in morning', 30),
+(2, 5, '10mg', 'Once daily', '30 days', 'Take in morning', 30),
+(3, 4, '500mg', 'Twice daily', '30 days', 'Take before meals', 60);
+
+-- Insert sample lab tests
+INSERT INTO `lab_tests` (`test_id`, `patient_id`, `doctor_id`, `test_date`, `status`, `priority`, `notes`, `total_amount`, `created_by`) VALUES
+('LT20241220001', 1, 1, '2024-12-20', 'completed', 'normal', 'Routine blood work', 500.00, 2),
+('LT20241221001', 2, 2, '2024-12-21', 'pending', 'high', 'Lipid profile for hypertension', 800.00, 3),
+('LT20241222001', 3, 1, '2024-12-22', 'in_progress', 'normal', 'Diabetes monitoring', 750.00, 2);
 
 -- Insert sample lab results
-INSERT INTO `laboratory_results` (`id`, `result_id`, `patient_id`, `test_id`, `doctor_id`, `test_date`, `result_value`, `status`, `conducted_by`) VALUES
-(1, 'LAB0001', 1, 1, 1, '2024-02-10', 'Normal', 'completed', 7),
-(2, 'LAB0002', 2, 2, 2, '2024-02-11', '95 mg/dL', 'completed', 7),
-(3, 'LAB0003', 3, 3, 3, '2024-02-12', 'Within normal limits', 'completed', 7),
-(4, 'LAB0004', 4, 4, 4, '2024-02-13', 'Elevated ALT', 'completed', 7),
-(5, 'LAB0005', 5, 5, 5, '2024-02-14', 'Normal creatinine', 'completed', 7);
+INSERT INTO `laboratory_results` (`test_id`, `patient_id`, `doctor_id`, `result_value`, `reference_range`, `unit`, `notes`, `test_date`, `status`, `conducted_by`) VALUES
+(1, 1, 1, '12.5', '12.0-15.5', 'g/dL', 'Normal hemoglobin level', '2024-12-20', 'completed', 7),
+(1, 1, 1, '4500', '4000-11000', '/μL', 'Normal WBC count', '2024-12-20', 'completed', 7);
+
+-- Insert sample pharmacy sales
+INSERT INTO `pharmacy_sales` (`sale_id`, `patient_id`, `sale_date`, `total_amount`, `discount_amount`, `payment_status`, `payment_method`, `sold_by`) VALUES
+('PS001', 1, '2024-12-20', 105.00, 5.00, 'paid', 'cash', 6),
+('PS002', 2, '2024-12-18', 165.00, 0.00, 'pending', NULL, 6);
+
+-- Insert pharmacy sale items
+INSERT INTO `pharmacy_sale_items` (`sale_id`, `medicine_id`, `quantity`, `unit_price`, `total_price`) VALUES
+(1, 1, 10, 2.50, 25.00),
+(1, 3, 30, 1.25, 37.50),
+(1, 2, 5, 8.75, 43.75),
+(2, 5, 30, 5.50, 165.00);
+
+-- Insert sample insurance companies
+INSERT INTO `insurance_companies` (`company_name`, `company_code`, `contact_person`, `contact_phone`, `contact_email`, `address`, `website`, `policy_types`, `is_active`, `created_by`) VALUES
+('Star Health Insurance', 'STAR', 'Rajesh Kumar', '+91-9876543230', 'rajesh@starhealth.com', '123 Insurance Plaza, Mumbai, Maharashtra', 'www.starhealth.in', 'Individual, Family, Senior Citizen', 1, 1),
+('HDFC ERGO Health Insurance', 'HDFC', 'Priya Sharma', '+91-9876543231', 'priya@hdfcergo.com', '456 HDFC Tower, Delhi, Delhi', 'www.hdfcergo.com', 'Individual, Group, Critical Illness', 1, 1),
+('ICICI Lombard Health Insurance', 'ICICI', 'Amit Patel', '+91-9876543232', 'amit@icicilombard.com', '789 ICICI Building, Bangalore, Karnataka', 'www.icicilombard.com', 'Individual, Family, Travel', 1, 1);
+
+-- Insert sample patient insurance policies
+INSERT INTO `patient_insurance_policies` (`patient_id`, `insurance_company_id`, `policy_number`, `policy_holder_name`, `relationship`, `policy_type`, `coverage_amount`, `deductible_amount`, `co_payment_percentage`, `start_date`, `expiry_date`, `premium_amount`, `premium_frequency`, `created_by`) VALUES
+(1, 1, 'STAR123456789', 'John Doe', 'self', 'Individual Health', 500000.00, 10000.00, 10.00, '2024-01-01', '2024-12-31', 15000.00, 'yearly', 1),
+(2, 2, 'HDFC987654321', 'Jane Smith', 'self', 'Family Health', 1000000.00, 15000.00, 15.00, '2024-06-01', '2025-05-31', 25000.00, 'yearly', 1),
+(3, 3, 'ICICI456789123', 'Robert Johnson', 'self', 'Individual Health', 300000.00, 5000.00, 20.00, '2024-03-01', '2025-02-28', 12000.00, 'yearly', 1);
+
+-- Insert sample insurance claims
+INSERT INTO `insurance_claims` (`claim_number`, `patient_id`, `insurance_company_id`, `policy_id`, `claim_date`, `service_date`, `diagnosis`, `treatment_details`, `claimed_amount`, `approved_amount`, `status`, `created_by`) VALUES
+('CLM001', 1, 1, 1, '2024-12-21', '2024-12-20', 'Routine Health Checkup', 'Complete blood count and consultation', 2000.00, 1800.00, 'approved', 1),
+('CLM002', 2, 2, 2, '2024-12-19', '2024-12-18', 'Hypertension', 'Blood pressure monitoring and medication', 3500.00, NULL, 'under_review', 1);
+
+-- ============================================================================
+-- LOGIN CREDENTIALS INFORMATION
+-- ============================================================================
+/*
+DEFAULT LOGIN CREDENTIALS (Password: 'password' for all users):
+
+Admin:
+- Username: admin
+- Password: password
+- Role: Administrator
+
+Doctor:
+- Username: dr_smith
+- Password: password
+- Role: Doctor
+
+Nurse:
+- Username: nurse_mary
+- Password: password
+- Role: Nurse
+
+Receptionist:
+- Username: receptionist
+- Password: password
+- Role: Receptionist
+
+Pharmacy Staff:
+- Username: pharmacy
+- Password: password
+- Role: Pharmacy Staff
+
+Lab Technician:
+- Username: lab_tech
+- Password: password
+- Role: Lab Technician
+
+Patients:
+- Username: patient1
+- Password: password
+- Role: Patient
+
+- Username: patient2
+- Password: password
+- Role: Patient
+
+Note: Please change these default passwords after first login for security.
+*/
 
 COMMIT;
-
--- ============================================================================
--- END OF HOSPITAL CRM DATABASE SCHEMA
--- ============================================================================
-
--- Default Login Credentials:
--- Username: admin@hospital.com
--- Password: admin
--- 
--- Other test accounts:
--- doctor1@hospital.com / admin (Doctor)
--- nurse1@hospital.com / admin (Nurse)  
--- patient1@hospital.com / admin (Patient)
--- reception@hospital.com / admin (Receptionist)
--- pharmacy@hospital.com / admin (Pharmacy Staff)
--- lab@hospital.com / admin (Lab Technician)
---
--- ============================================================================
