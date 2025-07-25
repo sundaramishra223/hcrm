@@ -1033,11 +1033,19 @@ CREATE TABLE `notifications` (
 DROP TABLE IF EXISTS `blood_inventory`;
 CREATE TABLE `blood_inventory` (
   `id` int(11) NOT NULL AUTO_INCREMENT,
-  `blood_type` enum('A+','A-','B+','B-','AB+','AB-','O+','O-') NOT NULL,
+  `blood_group` enum('A+','A-','B+','B-','AB+','AB-','O+','O-') NOT NULL,
   `units_available` int(11) NOT NULL DEFAULT 0,
-  `last_updated` timestamp NOT NULL DEFAULT current_timestamp() ON UPDATE current_timestamp(),
+  `collection_date` date NOT NULL,
+  `expiry_date` date NOT NULL,
+  `source_donation_id` int(11) DEFAULT NULL,
+  `status` enum('available','expired','used') DEFAULT 'available',
+  `created_at` timestamp NOT NULL DEFAULT current_timestamp(),
+  `updated_at` timestamp NOT NULL DEFAULT current_timestamp() ON UPDATE current_timestamp(),
   PRIMARY KEY (`id`),
-  UNIQUE KEY `blood_type` (`blood_type`)
+  KEY `blood_group` (`blood_group`),
+  KEY `expiry_date` (`expiry_date`),
+  KEY `source_donation_id` (`source_donation_id`),
+  CONSTRAINT `blood_inventory_ibfk_1` FOREIGN KEY (`source_donation_id`) REFERENCES `blood_donations` (`id`) ON DELETE SET NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- --------------------------------------------------------
@@ -1047,19 +1055,22 @@ CREATE TABLE `blood_inventory` (
 DROP TABLE IF EXISTS `blood_donations`;
 CREATE TABLE `blood_donations` (
   `id` int(11) NOT NULL AUTO_INCREMENT,
-  `donor_name` varchar(100) NOT NULL,
-  `donor_phone` varchar(20) NOT NULL,
-  `donor_email` varchar(100) DEFAULT NULL,
-  `blood_type` enum('A+','A-','B+','B-','AB+','AB-','O+','O-') NOT NULL,
-  `units_donated` int(11) NOT NULL DEFAULT 1,
+  `donor_patient_id` int(11) NOT NULL,
+  `blood_group` enum('A+','A-','B+','B-','AB+','AB-','O+','O-') NOT NULL,
+  `units_collected` int(11) NOT NULL,
   `donation_date` date NOT NULL,
+  `status` enum('completed','pending','rejected') DEFAULT 'completed',
   `notes` text DEFAULT NULL,
-  `recorded_by` int(11) NOT NULL,
+  `created_by` int(11) NOT NULL,
   `created_at` timestamp NOT NULL DEFAULT current_timestamp(),
+  `updated_at` timestamp NOT NULL DEFAULT current_timestamp() ON UPDATE current_timestamp(),
   PRIMARY KEY (`id`),
-  KEY `blood_type` (`blood_type`),
-  KEY `recorded_by` (`recorded_by`),
-  CONSTRAINT `blood_donations_ibfk_1` FOREIGN KEY (`recorded_by`) REFERENCES `users` (`id`)
+  KEY `donor_patient_id` (`donor_patient_id`),
+  KEY `created_by` (`created_by`),
+  KEY `donation_date` (`donation_date`),
+  KEY `blood_group` (`blood_group`),
+  CONSTRAINT `blood_donations_ibfk_1` FOREIGN KEY (`donor_patient_id`) REFERENCES `patients` (`id`),
+  CONSTRAINT `blood_donations_ibfk_2` FOREIGN KEY (`created_by`) REFERENCES `users` (`id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- --------------------------------------------------------
@@ -1070,27 +1081,22 @@ DROP TABLE IF EXISTS `blood_requests`;
 CREATE TABLE `blood_requests` (
   `id` int(11) NOT NULL AUTO_INCREMENT,
   `patient_id` int(11) NOT NULL,
-  `blood_type` enum('A+','A-','B+','B-','AB+','AB-','O+','O-') NOT NULL,
-  `units_required` int(11) NOT NULL,
-  `urgency_level` enum('low','medium','high','critical') DEFAULT 'medium',
-  `required_date` date NOT NULL,
-  `status` enum('pending','partial','fulfilled','cancelled') DEFAULT 'pending',
-  `units_fulfilled` int(11) DEFAULT 0,
+  `blood_group` enum('A+','A-','B+','B-','AB+','AB-','O+','O-') NOT NULL,
+  `units_needed` int(11) NOT NULL,
+  `urgency` enum('low','medium','high','critical') NOT NULL,
+  `status` enum('pending','fulfilled','cancelled') DEFAULT 'pending',
   `notes` text DEFAULT NULL,
-  `requested_by` int(11) NOT NULL,
-  `fulfilled_by` int(11) DEFAULT NULL,
-  `fulfilled_at` timestamp NULL DEFAULT NULL,
+  `request_date` date NOT NULL DEFAULT curdate(),
+  `created_by` int(11) NOT NULL,
   `created_at` timestamp NOT NULL DEFAULT current_timestamp(),
+  `updated_at` timestamp NOT NULL DEFAULT current_timestamp() ON UPDATE current_timestamp(),
   PRIMARY KEY (`id`),
   KEY `patient_id` (`patient_id`),
-  KEY `blood_type` (`blood_type`),
-  KEY `status` (`status`),
-  KEY `urgency_level` (`urgency_level`),
-  KEY `requested_by` (`requested_by`),
-  KEY `fulfilled_by` (`fulfilled_by`),
+  KEY `created_by` (`created_by`),
+  KEY `request_date` (`request_date`),
+  KEY `urgency` (`urgency`),
   CONSTRAINT `blood_requests_ibfk_1` FOREIGN KEY (`patient_id`) REFERENCES `patients` (`id`),
-  CONSTRAINT `blood_requests_ibfk_2` FOREIGN KEY (`requested_by`) REFERENCES `users` (`id`),
-  CONSTRAINT `blood_requests_ibfk_3` FOREIGN KEY (`fulfilled_by`) REFERENCES `users` (`id`)
+  CONSTRAINT `blood_requests_ibfk_2` FOREIGN KEY (`created_by`) REFERENCES `users` (`id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- ============================================================================
@@ -1105,53 +1111,91 @@ DROP TABLE IF EXISTS `organ_donors`;
 CREATE TABLE `organ_donors` (
   `id` int(11) NOT NULL AUTO_INCREMENT,
   `patient_id` int(11) NOT NULL,
-  `organ_type` enum('Heart','Liver','Kidney','Lung','Pancreas','Cornea','Bone Marrow','Skin') NOT NULL,
-  `blood_type` enum('A+','A-','B+','B-','AB+','AB-','O+','O-') NOT NULL,
-  `medical_history` text DEFAULT NULL,
-  `consent_date` date NOT NULL,
-  `donation_date` date DEFAULT NULL,
-  `notes` text DEFAULT NULL,
-  `status` enum('active','inactive','donated','deceased') DEFAULT 'active',
-  `registered_by` int(11) NOT NULL,
+  `organs_to_donate` text NOT NULL,
+  `medical_conditions` text DEFAULT NULL,
+  `emergency_contact_name` varchar(100) DEFAULT NULL,
+  `emergency_contact_phone` varchar(20) DEFAULT NULL,
+  `status` enum('active','inactive','deceased') DEFAULT 'active',
   `created_at` timestamp NOT NULL DEFAULT current_timestamp(),
   `updated_at` timestamp NOT NULL DEFAULT current_timestamp() ON UPDATE current_timestamp(),
   PRIMARY KEY (`id`),
-  KEY `patient_id` (`patient_id`),
-  KEY `organ_type` (`organ_type`),
-  KEY `blood_type` (`blood_type`),
-  KEY `status` (`status`),
-  KEY `registered_by` (`registered_by`),
-  CONSTRAINT `organ_donors_ibfk_1` FOREIGN KEY (`patient_id`) REFERENCES `patients` (`id`),
-  CONSTRAINT `organ_donors_ibfk_2` FOREIGN KEY (`registered_by`) REFERENCES `users` (`id`)
+  UNIQUE KEY `patient_id` (`patient_id`),
+  CONSTRAINT `organ_donors_ibfk_1` FOREIGN KEY (`patient_id`) REFERENCES `patients` (`id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- --------------------------------------------------------
--- Table structure for table `organ_recipients`
+-- Table structure for table `organ_donations`
 -- --------------------------------------------------------
 
-DROP TABLE IF EXISTS `organ_recipients`;
-CREATE TABLE `organ_recipients` (
+DROP TABLE IF EXISTS `organ_donations`;
+CREATE TABLE `organ_donations` (
+  `id` int(11) NOT NULL AUTO_INCREMENT,
+  `donor_patient_id` int(11) NOT NULL,
+  `recipient_patient_id` int(11) DEFAULT NULL,
+  `organ_type` varchar(50) NOT NULL,
+  `donation_date` date NOT NULL,
+  `status` enum('completed','pending','cancelled') DEFAULT 'completed',
+  `notes` text DEFAULT NULL,
+  `created_by` int(11) NOT NULL,
+  `created_at` timestamp NOT NULL DEFAULT current_timestamp(),
+  `updated_at` timestamp NOT NULL DEFAULT current_timestamp() ON UPDATE current_timestamp(),
+  PRIMARY KEY (`id`),
+  KEY `donor_patient_id` (`donor_patient_id`),
+  KEY `recipient_patient_id` (`recipient_patient_id`),
+  KEY `created_by` (`created_by`),
+  KEY `donation_date` (`donation_date`),
+  CONSTRAINT `organ_donations_ibfk_1` FOREIGN KEY (`donor_patient_id`) REFERENCES `patients` (`id`),
+  CONSTRAINT `organ_donations_ibfk_2` FOREIGN KEY (`recipient_patient_id`) REFERENCES `patients` (`id`) ON DELETE SET NULL,
+  CONSTRAINT `organ_donations_ibfk_3` FOREIGN KEY (`created_by`) REFERENCES `users` (`id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- --------------------------------------------------------
+-- Table structure for table `organ_requests`
+-- --------------------------------------------------------
+
+DROP TABLE IF EXISTS `organ_requests`;
+CREATE TABLE `organ_requests` (
   `id` int(11) NOT NULL AUTO_INCREMENT,
   `patient_id` int(11) NOT NULL,
-  `organ_needed` enum('Heart','Liver','Kidney','Lung','Pancreas','Cornea','Bone Marrow','Skin') NOT NULL,
-  `blood_type` enum('A+','A-','B+','B-','AB+','AB-','O+','O-') NOT NULL,
-  `priority_level` enum('low','medium','high','critical') DEFAULT 'medium',
+  `organ_type` varchar(50) NOT NULL,
+  `urgency` enum('low','medium','high','critical') NOT NULL,
+  `blood_group` enum('A+','A-','B+','B-','AB+','AB-','O+','O-') NOT NULL,
   `medical_condition` text NOT NULL,
-  `doctor_notes` text DEFAULT NULL,
-  `status` enum('waiting','matched','transplanted','cancelled') DEFAULT 'waiting',
-  `transplant_date` date DEFAULT NULL,
-  `registered_by` int(11) NOT NULL,
+  `status` enum('pending','fulfilled','cancelled') DEFAULT 'pending',
+  `notes` text DEFAULT NULL,
+  `request_date` date NOT NULL DEFAULT curdate(),
+  `created_by` int(11) NOT NULL,
   `created_at` timestamp NOT NULL DEFAULT current_timestamp(),
   `updated_at` timestamp NOT NULL DEFAULT current_timestamp() ON UPDATE current_timestamp(),
   PRIMARY KEY (`id`),
   KEY `patient_id` (`patient_id`),
-  KEY `organ_needed` (`organ_needed`),
-  KEY `blood_type` (`blood_type`),
-  KEY `priority_level` (`priority_level`),
+  KEY `created_by` (`created_by`),
+  KEY `request_date` (`request_date`),
+  KEY `urgency` (`urgency`),
+  CONSTRAINT `organ_requests_ibfk_1` FOREIGN KEY (`patient_id`) REFERENCES `patients` (`id`),
+  CONSTRAINT `organ_requests_ibfk_2` FOREIGN KEY (`created_by`) REFERENCES `users` (`id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- --------------------------------------------------------
+-- Table structure for table `organ_availability`
+-- --------------------------------------------------------
+
+DROP TABLE IF EXISTS `organ_availability`;
+CREATE TABLE `organ_availability` (
+  `id` int(11) NOT NULL AUTO_INCREMENT,
+  `organ_type` varchar(50) NOT NULL,
+  `blood_group` enum('A+','A-','B+','B-','AB+','AB-','O+','O-') NOT NULL,
+  `donor_patient_id` int(11) NOT NULL,
+  `status` enum('available','reserved','used') DEFAULT 'available',
+  `expiry_date` date DEFAULT NULL,
+  `created_at` timestamp NOT NULL DEFAULT current_timestamp(),
+  `updated_at` timestamp NOT NULL DEFAULT current_timestamp() ON UPDATE current_timestamp(),
+  PRIMARY KEY (`id`),
+  KEY `organ_type` (`organ_type`),
+  KEY `blood_group` (`blood_group`),
+  KEY `donor_patient_id` (`donor_patient_id`),
   KEY `status` (`status`),
-  KEY `registered_by` (`registered_by`),
-  CONSTRAINT `organ_recipients_ibfk_1` FOREIGN KEY (`patient_id`) REFERENCES `patients` (`id`),
-  CONSTRAINT `organ_recipients_ibfk_2` FOREIGN KEY (`registered_by`) REFERENCES `users` (`id`)
+  CONSTRAINT `organ_availability_ibfk_1` FOREIGN KEY (`donor_patient_id`) REFERENCES `patients` (`id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- --------------------------------------------------------
@@ -1328,65 +1372,66 @@ INSERT INTO `insurance_claims` (`claim_number`, `patient_id`, `insurance_company
 -- SAMPLE DATA FOR BLOOD BANK MANAGEMENT
 -- ============================================================================
 
--- Sample data for blood_donors
-INSERT INTO `blood_donors` (`donor_id`, `first_name`, `last_name`, `email`, `phone`, `blood_group`, `date_of_birth`, `gender`, `address`, `emergency_contact_name`, `emergency_contact_phone`, `medical_history`, `last_donation_date`, `eligibility_status`, `created_by`) VALUES
-('BD202401', 'Rajesh', 'Kumar', 'rajesh.kumar@email.com', '9876543210', 'O+', '1985-03-15', 'male', '123 Main Street, Delhi', 'Sunita Kumar', '9876543211', 'No significant medical history', '2024-09-15', 'eligible', 1),
-('BD202402', 'Priya', 'Sharma', 'priya.sharma@email.com', '9876543212', 'A+', '1990-07-22', 'female', '456 Park Avenue, Mumbai', 'Rohit Sharma', '9876543213', 'Healthy individual', '2024-10-20', 'eligible', 1),
-('BD202403', 'Amit', 'Singh', 'amit.singh@email.com', '9876543214', 'B+', '1988-11-10', 'male', '789 Garden Road, Bangalore', 'Neha Singh', '9876543215', 'Regular donor, excellent health', '2024-11-01', 'eligible', 1),
-('BD202404', 'Sunita', 'Patel', 'sunita.patel@email.com', '9876543216', 'AB+', '1992-05-08', 'female', '321 Lake View, Chennai', 'Kiran Patel', '9876543217', 'No known allergies', NULL, 'eligible', 1),
-('BD202405', 'Vikram', 'Gupta', 'vikram.gupta@email.com', '9876543218', 'O-', '1987-12-03', 'male', '654 Hill Station, Pune', 'Meera Gupta', '9876543219', 'Universal donor, very healthy', '2024-08-25', 'eligible', 1);
-
 -- Sample data for blood_donations
-INSERT INTO `blood_donations` (`donation_id`, `donor_id`, `blood_group`, `units_collected`, `donation_date`, `collection_site`, `staff_id`, `hemoglobin_level`, `blood_pressure`, `temperature`, `weight`, `donation_status`, `notes`) VALUES
-('DON202401', 1, 'O+', 1.0, '2024-11-15', 'Main Hospital', 1, 14.5, '120/80', 98.6, 70.5, 'completed', 'Regular donor, excellent vitals'),
-('DON202402', 2, 'A+', 1.0, '2024-11-18', 'Main Hospital', 1, 13.8, '115/75', 98.4, 65.2, 'completed', 'First time donor, did well'),
-('DON202403', 3, 'B+', 1.0, '2024-11-20', 'Mobile Unit', 1, 15.2, '125/85', 98.8, 75.0, 'completed', 'Regular donor, no issues'),
-('DON202404', 5, 'O-', 2.0, '2024-11-10', 'Main Hospital', 1, 14.8, '118/78', 98.5, 72.3, 'completed', 'Double red cell donation'),
-('DON202405', 1, 'O+', 1.0, '2024-12-01', 'Main Hospital', 1, 14.3, '122/82', 98.7, 71.0, 'completed', 'Follow-up donation');
+INSERT INTO `blood_donations` (`donor_patient_id`, `blood_group`, `units_collected`, `donation_date`, `status`, `notes`, `created_by`) VALUES
+(1, 'O+', 1, '2024-11-15', 'completed', 'Regular donor, excellent vitals', 1),
+(2, 'A+', 1, '2024-11-18', 'completed', 'First time donor, did well', 1),
+(3, 'B+', 1, '2024-11-20', 'completed', 'Regular donor, no issues', 1),
+(5, 'O-', 2, '2024-11-10', 'completed', 'Double red cell donation', 1),
+(1, 'O+', 1, '2024-12-01', 'completed', 'Follow-up donation', 1);
 
 -- Sample data for blood_inventory
-INSERT INTO `blood_inventory` (`blood_group`, `units_available`, `expiry_date`, `collection_date`, `source_donation_id`, `status`) VALUES
-('A+', 8.0, '2025-01-15', '2024-11-18', 'DON202402', 'available'),
-('A-', 3.0, '2025-01-20', '2024-11-20', NULL, 'available'),
-('B+', 12.0, '2025-01-18', '2024-11-20', 'DON202403', 'available'),
-('B-', 4.0, '2025-01-22', '2024-11-22', NULL, 'available'),
-('AB+', 6.0, '2025-01-25', '2024-11-25', NULL, 'available'),
-('AB-', 2.0, '2025-01-28', '2024-11-28', NULL, 'available'),
-('O+', 15.0, '2025-01-15', '2024-11-15', 'DON202401', 'available'),
-('O-', 10.0, '2025-01-10', '2024-11-10', 'DON202404', 'available');
+INSERT INTO `blood_inventory` (`blood_group`, `units_available`, `collection_date`, `expiry_date`, `source_donation_id`, `status`) VALUES
+('A+', 8, '2024-11-18', '2025-01-15', 2, 'available'),
+('A-', 3, '2024-11-20', '2025-01-20', NULL, 'available'),
+('B+', 12, '2024-11-20', '2025-01-18', 3, 'available'),
+('B-', 4, '2024-11-22', '2025-01-22', NULL, 'available'),
+('AB+', 6, '2024-11-25', '2025-01-25', NULL, 'available'),
+('AB-', 2, '2024-11-28', '2025-01-28', NULL, 'available'),
+('O+', 15, '2024-11-15', '2025-01-15', 1, 'available'),
+('O-', 10, '2024-11-10', '2025-01-10', 4, 'available');
 
 -- Sample data for blood_requests
-INSERT INTO `blood_requests` (`request_id`, `patient_id`, `blood_group`, `units_requested`, `urgency_level`, `requesting_doctor`, `request_date`, `required_date`, `request_status`, `notes`, `issued_by`) VALUES
-('REQ202401', 1, 'O+', 2.0, 'urgent', 1, '2024-12-01', '2024-12-02', 'approved', 'Surgery scheduled, blood needed for transfusion', 1),
-('REQ202402', 3, 'A+', 3.0, 'critical', 2, '2024-11-30', '2024-12-01', 'approved', 'Emergency surgery, massive blood loss', 1),
-('REQ202403', 5, 'B+', 1.0, 'normal', 1, '2024-12-05', '2024-12-10', 'pending', 'Elective surgery preparation', NULL),
-('REQ202404', 7, 'AB+', 2.0, 'urgent', 2, '2024-12-03', '2024-12-06', 'pending', 'Liver transplant surgery', NULL),
-('REQ202405', 2, 'O-', 1.0, 'critical', 1, '2024-11-28', '2024-11-29', 'approved', 'Emergency trauma case', 1);
+INSERT INTO `blood_requests` (`patient_id`, `blood_group`, `units_needed`, `urgency`, `status`, `notes`, `request_date`, `created_by`) VALUES
+(1, 'O+', 2, 'high', 'pending', 'Surgery scheduled, blood needed for transfusion', '2024-12-01', 1),
+(3, 'A+', 3, 'critical', 'fulfilled', 'Emergency surgery, massive blood loss', '2024-11-30', 1),
+(5, 'B+', 1, 'medium', 'pending', 'Elective surgery preparation', '2024-12-05', 1),
+(7, 'AB+', 2, 'high', 'pending', 'Liver transplant surgery', '2024-12-03', 1),
+(2, 'O-', 1, 'critical', 'fulfilled', 'Emergency trauma case', '2024-11-28', 1);
 
 -- ============================================================================
 -- SAMPLE DATA FOR ORGAN DONATION MANAGEMENT
 -- ============================================================================
 
 -- Sample data for organ_donors
-INSERT INTO `organ_donors` (`donor_id`, `first_name`, `last_name`, `email`, `phone`, `date_of_birth`, `gender`, `blood_group`, `address`, `emergency_contact_name`, `emergency_contact_phone`, `organs_to_donate`, `medical_history`, `consent_date`, `donor_status`, `registered_by`) VALUES
-('OD202401', 'Rahul', 'Mehta', 'rahul.mehta@email.com', '9876543220', '1985-06-15', 'male', 'O+', '123 Donor Street, Delhi', 'Kavita Mehta', '9876543221', 'kidney,liver', 'No significant medical history', '2024-10-15', 'active', 1),
-('OD202402', 'Anjali', 'Verma', 'anjali.verma@email.com', '9876543222', '1988-09-22', 'female', 'A+', '456 Heart Lane, Mumbai', 'Suresh Verma', '9876543223', 'heart,cornea', 'Healthy individual with no known medical issues', '2024-10-20', 'active', 1),
-('OD202403', 'Manoj', 'Agarwal', 'manoj.agarwal@email.com', '9876543224', '1982-04-10', 'male', 'B+', '789 Organ Avenue, Bangalore', 'Pooja Agarwal', '9876543225', 'lung,kidney', 'Controlled hypertension, otherwise healthy', '2024-11-01', 'active', 1),
-('OD202404', 'Deepika', 'Joshi', 'deepika.joshi@email.com', '9876543226', '1990-12-05', 'female', 'AB+', '321 Donation Drive, Chennai', 'Vikash Joshi', '9876543227', 'pancreas,cornea', 'No known medical issues', '2024-11-05', 'active', 1),
-('OD202405', 'Arjun', 'Reddy', 'arjun.reddy@email.com', '9876543228', '1986-08-18', 'male', 'O-', '654 Savior Street, Hyderabad', 'Priya Reddy', '9876543229', 'kidney,liver,heart', 'Excellent health, regular donor', '2024-11-10', 'active', 1);
+INSERT INTO `organ_donors` (`patient_id`, `organs_to_donate`, `medical_conditions`, `emergency_contact_name`, `emergency_contact_phone`, `status`) VALUES
+(1, 'Heart,Liver,Kidney', 'No significant medical history', 'Kavita Mehta', '9876543221', 'active'),
+(2, 'Kidney,Cornea', 'Healthy individual with no known medical issues', 'Suresh Verma', '9876543223', 'active'),
+(3, 'Lung,Kidney', 'Controlled hypertension, otherwise healthy', 'Pooja Agarwal', '9876543225', 'active'),
+(5, 'Pancreas,Cornea', 'No known medical issues', 'Vikash Joshi', '9876543227', 'active'),
+(7, 'Heart,Liver,Kidney', 'Excellent health, regular donor', 'Priya Reddy', '9876543229', 'active');
 
--- Sample data for organ_recipients
-INSERT INTO `organ_recipients` (`recipient_id`, `patient_id`, `organ_needed`, `blood_group`, `urgency_level`, `medical_condition`, `doctor_id`, `registration_date`, `priority_score`, `recipient_status`, `notes`) VALUES
-('OR202401', 8, 'kidney', 'O+', 'critical', 'Chronic kidney disease stage 5, dialysis dependent', 1, '2024-09-15', 85, 'waiting', 'Patient requires urgent kidney transplant'),
-('OR202402', 9, 'liver', 'A+', 'critical', 'End-stage liver disease, cirrhosis', 2, '2024-10-01', 92, 'waiting', 'Critical condition, needs immediate transplant'),
-('OR202403', 10, 'heart', 'B+', 'urgent', 'Dilated cardiomyopathy, heart failure', 1, '2024-10-15', 78, 'waiting', 'Heart failure, transplant only option'),
-('OR202404', 1, 'cornea', 'O+', 'normal', 'Corneal opacity bilateral, vision impairment', 2, '2024-11-01', 45, 'waiting', 'Vision restoration needed'),
-('OR202405', 3, 'lung', 'B+', 'urgent', 'Pulmonary fibrosis, respiratory failure', 1, '2024-11-10', 82, 'waiting', 'Progressive lung disease');
+-- Sample data for organ_donations
+INSERT INTO `organ_donations` (`donor_patient_id`, `recipient_patient_id`, `organ_type`, `donation_date`, `status`, `notes`, `created_by`) VALUES
+(1, 8, 'Kidney', '2024-11-20', 'completed', 'Successful kidney transplant, no complications observed', 1),
+(2, 9, 'Liver', '2024-11-25', 'completed', 'Liver transplant completed successfully, patient stable', 1),
+(3, NULL, 'Cornea', '2024-12-01', 'completed', 'Corneal donation for eye bank', 1);
 
--- Sample data for organ_transplants
-INSERT INTO `organ_transplants` (`transplant_id`, `donor_id`, `recipient_id`, `organ_type`, `transplant_date`, `surgeon_id`, `hospital_unit`, `surgery_duration`, `transplant_status`, `complications`, `notes`, `created_by`) VALUES
-('TR202401', 1, 1, 'kidney', '2024-11-20', 2, 'OR-1', 4.5, 'successful', NULL, 'Successful kidney transplant, no complications observed', 1),
-('TR202402', 2, 2, 'liver', '2024-11-25', 2, 'OR-2', 8.0, 'successful', 'Minor bleeding controlled', 'Liver transplant completed successfully, patient stable', 1);
+-- Sample data for organ_requests
+INSERT INTO `organ_requests` (`patient_id`, `organ_type`, `urgency`, `blood_group`, `medical_condition`, `status`, `notes`, `request_date`, `created_by`) VALUES
+(8, 'Kidney', 'critical', 'O+', 'Chronic kidney disease stage 5, dialysis dependent', 'fulfilled', 'Patient requires urgent kidney transplant', '2024-09-15', 1),
+(9, 'Liver', 'critical', 'A+', 'End-stage liver disease, cirrhosis', 'fulfilled', 'Critical condition, needs immediate transplant', '2024-10-01', 1),
+(10, 'Heart', 'high', 'B+', 'Dilated cardiomyopathy, heart failure', 'pending', 'Heart failure, transplant only option', '2024-10-15', 1),
+(1, 'Cornea', 'low', 'O+', 'Corneal opacity bilateral, vision impairment', 'pending', 'Vision restoration needed', '2024-11-01', 1),
+(3, 'Lung', 'high', 'B+', 'Pulmonary fibrosis, respiratory failure', 'pending', 'Progressive lung disease', '2024-11-10', 1);
+
+-- Sample data for organ_availability
+INSERT INTO `organ_availability` (`organ_type`, `blood_group`, `donor_patient_id`, `status`, `expiry_date`) VALUES
+('Heart', 'O+', 1, 'available', '2024-12-25'),
+('Liver', 'A+', 2, 'available', '2024-12-30'),
+('Kidney', 'B+', 3, 'available', '2025-01-15'),
+('Cornea', 'AB+', 5, 'available', '2025-02-01'),
+('Lung', 'O-', 7, 'available', '2024-12-28');
 
 
 
