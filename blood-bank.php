@@ -3,7 +3,6 @@ session_start();
 require_once 'config/database.php';
 require_once 'includes/functions.php';
 
-// Check if user is logged in
 if (!isset($_SESSION['user_id'])) {
     header('Location: index.php');
     exit;
@@ -13,140 +12,132 @@ $db = new Database();
 $user_role = $_SESSION['role'];
 $user_id = $_SESSION['user_id'];
 
-// Get current page
-$current_page = $_GET['page'] ?? 'overview';
-
-// Check role permissions
-$allowed_roles = ['admin', 'doctor', 'nurse', 'receptionist', 'patient'];
-if (!in_array($user_role, $allowed_roles)) {
-    header('Location: dashboard.php');
-    exit;
-}
-
-// Fetch blood bank statistics
-$stats = [];
-if (in_array($user_role, ['admin', 'doctor', 'nurse', 'receptionist'])) {
-    // Total blood units
-    $stmt = $db->prepare("SELECT COUNT(*) as total FROM blood_inventory WHERE expiry_date > CURDATE()");
-    $stmt->execute();
-    $stats['total_units'] = $stmt->fetch()['total'];
-
-    // Available units by blood group
-    $stmt = $db->prepare("SELECT blood_group, SUM(units_available) as total FROM blood_inventory WHERE expiry_date > CURDATE() AND units_available > 0 GROUP BY blood_group");
-    $stmt->execute();
-    $stats['by_blood_group'] = $stmt->fetchAll();
-
-    // Recent donations
-    $stmt = $db->prepare("SELECT COUNT(*) as total FROM blood_donations WHERE donation_date >= DATE_SUB(CURDATE(), INTERVAL 30 DAY)");
-    $stmt->execute();
-    $stats['recent_donations'] = $stmt->fetch()['total'];
-
-    // Pending requests
-    $stmt = $db->prepare("SELECT COUNT(*) as total FROM blood_requests WHERE status = 'pending'");
-    $stmt->execute();
-    $stats['pending_requests'] = $stmt->fetch()['total'];
-}
-
-// Fetch patient-specific data if patient
-$patient_data = [];
-if ($user_role === 'patient') {
-    // Get patient ID
-    $stmt = $db->prepare("SELECT id FROM patients WHERE user_id = ?");
-    $stmt->execute([$user_id]);
-    $patient = $stmt->fetch();
-    
-    if ($patient) {
-        $patient_id = $patient['id'];
-        
-        // Patient's donations
-        $stmt = $db->prepare("SELECT bd.*, p.first_name, p.last_name FROM blood_donations bd JOIN patients p ON bd.donor_patient_id = p.id WHERE bd.donor_patient_id = ? ORDER BY bd.donation_date DESC");
-        $stmt->execute([$patient_id]);
-        $patient_data['donations'] = $stmt->fetchAll();
-        
-        // Patient's requests
-        $stmt = $db->prepare("SELECT br.*, p.first_name, p.last_name FROM blood_requests br JOIN patients p ON br.patient_id = p.id WHERE br.patient_id = ? ORDER BY br.request_date DESC");
-        $stmt->execute([$patient_id]);
-        $patient_data['requests'] = $stmt->fetchAll();
-    }
-}
-
 // Handle form submissions
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     if (isset($_POST['action'])) {
         switch ($_POST['action']) {
-            case 'add_donation':
-                if (in_array($user_role, ['admin', 'doctor', 'nurse', 'receptionist'])) {
-                    $donor_patient_id = $_POST['donor_patient_id'];
-                    $blood_group = $_POST['blood_group'];
-                    $units_collected = $_POST['units_collected'];
-                    $donation_date = $_POST['donation_date'];
-                    $notes = $_POST['notes'] ?? '';
+            case 'add_donor':
+                if (in_array($user_role, ['admin', 'doctor', 'nurse'])) {
+                    $stmt = $db->prepare("INSERT INTO blood_donors (donor_id, first_name, last_name, email, phone, blood_group, date_of_birth, gender, address, emergency_contact, emergency_phone, medical_history, last_donation_date, next_eligible_date, status, registered_by) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'active', ?)");
                     
-                    $stmt = $db->prepare("INSERT INTO blood_donations (donor_patient_id, blood_group, units_collected, donation_date, status, notes, created_by) VALUES (?, ?, ?, ?, 'completed', ?, ?)");
-                    $stmt->execute([$donor_patient_id, $blood_group, $units_collected, $donation_date, $notes, $user_id]);
+                    $donor_id = 'BD' . date('Y') . str_pad(rand(1, 9999), 4, '0', STR_PAD_LEFT);
+                    $next_eligible = date('Y-m-d', strtotime('+56 days'));
                     
-                    // Update inventory
-                    $expiry_date = date('Y-m-d', strtotime($donation_date . ' + 35 days'));
-                    $stmt = $db->prepare("INSERT INTO blood_inventory (blood_group, units_available, collection_date, expiry_date, source_donation_id) VALUES (?, ?, ?, ?, ?)");
-                    $stmt->execute([$blood_group, $units_collected, $donation_date, $expiry_date, $db->lastInsertId()]);
-                    
-                    $success_message = "Blood donation recorded successfully!";
+                    $stmt->execute([
+                        $donor_id,
+                        $_POST['first_name'],
+                        $_POST['last_name'],
+                        $_POST['email'],
+                        $_POST['phone'],
+                        $_POST['blood_group'],
+                        $_POST['date_of_birth'],
+                        $_POST['gender'],
+                        $_POST['address'],
+                        $_POST['emergency_contact'],
+                        $_POST['emergency_phone'],
+                        $_POST['medical_history'],
+                        $_POST['last_donation_date'] ?: null,
+                        $_POST['last_donation_date'] ? date('Y-m-d', strtotime($_POST['last_donation_date'] . ' +56 days')) : $next_eligible,
+                        $user_id
+                    ]);
+                    $success = "Donor registered successfully!";
                 }
                 break;
                 
-            case 'add_request':
-                if (in_array($user_role, ['admin', 'doctor', 'nurse', 'receptionist'])) {
-                    $patient_id = $_POST['patient_id'];
-                    $blood_group = $_POST['blood_group'];
-                    $units_needed = $_POST['units_needed'];
-                    $urgency = $_POST['urgency'];
-                    $notes = $_POST['notes'] ?? '';
+            case 'add_donation':
+                if (in_array($user_role, ['admin', 'doctor', 'nurse'])) {
+                    $stmt = $db->prepare("INSERT INTO blood_donations (donation_id, donor_id, blood_group, units_collected, donation_date, collection_center, staff_id, hemoglobin_level, blood_pressure, temperature, weight, medical_clearance, notes, status) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'cleared', ?, 'collected')");
                     
-                    $stmt = $db->prepare("INSERT INTO blood_requests (patient_id, blood_group, units_needed, urgency, status, notes, created_by) VALUES (?, ?, ?, ?, 'pending', ?, ?)");
-                    $stmt->execute([$patient_id, $blood_group, $units_needed, $urgency, $notes, $user_id]);
+                    $donation_id = 'DON' . date('Y') . str_pad(rand(1, 9999), 4, '0', STR_PAD_LEFT);
                     
-                    $success_message = "Blood request created successfully!";
+                    $stmt->execute([
+                        $donation_id,
+                        $_POST['donor_id'],
+                        $_POST['blood_group'],
+                        $_POST['units_collected'],
+                        $_POST['donation_date'],
+                        $_POST['collection_center'],
+                        $user_id,
+                        $_POST['hemoglobin_level'],
+                        $_POST['blood_pressure'],
+                        $_POST['temperature'],
+                        $_POST['weight'],
+                        $_POST['notes']
+                    ]);
+                    
+                    // Update blood inventory
+                    $stmt = $db->prepare("INSERT INTO blood_inventory (blood_group, units_available, last_updated, updated_by) VALUES (?, ?, NOW(), ?) ON DUPLICATE KEY UPDATE units_available = units_available + ?, last_updated = NOW(), updated_by = ?");
+                    $stmt->execute([$_POST['blood_group'], $_POST['units_collected'], $user_id, $_POST['units_collected'], $user_id]);
+                    
+                    // Update donor's last donation date
+                    $next_eligible = date('Y-m-d', strtotime($_POST['donation_date'] . ' +56 days'));
+                    $stmt = $db->prepare("UPDATE blood_donors SET last_donation_date = ?, next_eligible_date = ? WHERE id = ?");
+                    $stmt->execute([$_POST['donation_date'], $next_eligible, $_POST['donor_id']]);
+                    
+                    $success = "Blood donation recorded successfully!";
+                }
+                break;
+                
+            case 'blood_request':
+                if (in_array($user_role, ['admin', 'doctor', 'nurse'])) {
+                    $stmt = $db->prepare("INSERT INTO blood_requests (request_id, patient_id, blood_group, units_requested, urgency_level, required_date, requesting_doctor, department, medical_reason, status, requested_by) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', ?)");
+                    
+                    $request_id = 'REQ' . date('Y') . str_pad(rand(1, 9999), 4, '0', STR_PAD_LEFT);
+                    
+                    $stmt->execute([
+                        $request_id,
+                        $_POST['patient_id'],
+                        $_POST['blood_group'],
+                        $_POST['units_requested'],
+                        $_POST['urgency_level'],
+                        $_POST['required_date'],
+                        $_POST['requesting_doctor'],
+                        $_POST['department'],
+                        $_POST['medical_reason'],
+                        $user_id
+                    ]);
+                    $success = "Blood request submitted successfully!";
                 }
                 break;
         }
     }
 }
 
-// Fetch data based on current page
-$page_data = [];
-switch ($current_page) {
-    case 'donations':
-        if (in_array($user_role, ['admin', 'doctor', 'nurse', 'receptionist'])) {
-            $stmt = $db->prepare("SELECT bd.*, p.first_name, p.last_name, p.phone, u.username as created_by_name FROM blood_donations bd JOIN patients p ON bd.donor_patient_id = p.id LEFT JOIN users u ON bd.created_by = u.id ORDER BY bd.donation_date DESC LIMIT 50");
-            $stmt->execute();
-            $page_data['donations'] = $stmt->fetchAll();
-        }
-        break;
-        
-    case 'inventory':
-        if (in_array($user_role, ['admin', 'doctor', 'nurse', 'receptionist'])) {
-            $stmt = $db->prepare("SELECT * FROM blood_inventory WHERE expiry_date > CURDATE() ORDER BY blood_group, expiry_date ASC");
-            $stmt->execute();
-            $page_data['inventory'] = $stmt->fetchAll();
-        }
-        break;
-        
-    case 'requests':
-        if (in_array($user_role, ['admin', 'doctor', 'nurse', 'receptionist'])) {
-            $stmt = $db->prepare("SELECT br.*, p.first_name, p.last_name, p.phone, u.username as created_by_name FROM blood_requests br JOIN patients p ON br.patient_id = p.id LEFT JOIN users u ON br.created_by = u.id ORDER BY br.request_date DESC LIMIT 50");
-            $stmt->execute();
-            $page_data['requests'] = $stmt->fetchAll();
-        }
-        break;
-}
+// Get statistics
+$stats = [];
+$stats['total_donors'] = $db->query("SELECT COUNT(*) FROM blood_donors WHERE status = 'active'")->fetchColumn();
+$stats['total_donations'] = $db->query("SELECT COUNT(*) FROM blood_donations WHERE status = 'collected'")->fetchColumn();
+$stats['pending_requests'] = $db->query("SELECT COUNT(*) FROM blood_requests WHERE status = 'pending'")->fetchColumn();
+$stats['total_units'] = $db->query("SELECT SUM(units_available) FROM blood_inventory")->fetchColumn() ?: 0;
 
-// Get patients for dropdowns
-$patients = [];
-if (in_array($user_role, ['admin', 'doctor', 'nurse', 'receptionist'])) {
-    $stmt = $db->prepare("SELECT id, first_name, last_name, blood_group FROM patients ORDER BY first_name, last_name");
-    $stmt->execute();
-    $patients = $stmt->fetchAll();
-}
+// Get blood inventory
+$inventory = $db->query("SELECT * FROM blood_inventory ORDER BY blood_group")->fetchAll();
+
+// Get recent donations
+$recent_donations = $db->query("
+    SELECT bd.*, CONCAT(bdr.first_name, ' ', bdr.last_name) as donor_name, bdr.donor_id as donor_code
+    FROM blood_donations bd 
+    JOIN blood_donors bdr ON bd.donor_id = bdr.id 
+    ORDER BY bd.donation_date DESC 
+    LIMIT 10
+")->fetchAll();
+
+// Get blood requests
+$blood_requests = $db->query("
+    SELECT br.*, CONCAT(p.first_name, ' ', p.last_name) as patient_name, p.patient_id as patient_code,
+           CONCAT(d.first_name, ' ', d.last_name) as doctor_name
+    FROM blood_requests br 
+    JOIN patients p ON br.patient_id = p.id 
+    LEFT JOIN doctors d ON br.requesting_doctor = d.id 
+    ORDER BY br.required_date ASC
+")->fetchAll();
+
+// Get donors
+$donors = $db->query("
+    SELECT * FROM blood_donors 
+    WHERE status = 'active' 
+    ORDER BY next_eligible_date ASC
+")->fetchAll();
 ?>
 
 <!DOCTYPE html>
@@ -162,756 +153,828 @@ if (in_array($user_role, ['admin', 'doctor', 'nurse', 'receptionist'])) {
             padding: 0;
             box-sizing: border-box;
         }
-
+        
         body {
             font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
             background-color: #f5f5f5;
             color: #333;
         }
-
-        .wrapper {
-            display: flex;
-            min-height: 100vh;
-        }
-
-        .sidebar {
-            width: 250px;
+        
+        .header {
             background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
             color: white;
-            padding: 20px 0;
-            position: fixed;
-            height: 100vh;
-            overflow-y: auto;
+            padding: 1rem 2rem;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
         }
-
-        .sidebar-header {
-            text-align: center;
-            padding: 0 20px 30px;
-            border-bottom: 1px solid rgba(255,255,255,0.1);
-        }
-
-        .sidebar-header h3 {
-            font-size: 1.5rem;
-            margin-bottom: 5px;
-        }
-
-        .sidebar-menu {
-            list-style: none;
-            padding: 20px 0;
-        }
-
-        .sidebar-menu li {
-            margin: 5px 0;
-        }
-
-        .sidebar-menu a {
+        
+        .header h1 {
             display: flex;
             align-items: center;
-            padding: 12px 20px;
-            color: rgba(255,255,255,0.8);
-            text-decoration: none;
-            transition: all 0.3s ease;
+            gap: 10px;
         }
-
-        .sidebar-menu a:hover,
-        .sidebar-menu a.active {
-            background: rgba(255,255,255,0.1);
+        
+        .nav-links {
+            display: flex;
+            gap: 20px;
+        }
+        
+        .nav-links a {
             color: white;
-            border-right: 3px solid #fff;
+            text-decoration: none;
+            padding: 8px 16px;
+            border-radius: 5px;
+            transition: background-color 0.3s;
         }
-
-        .sidebar-menu i {
-            margin-right: 10px;
-            width: 20px;
+        
+        .nav-links a:hover {
+            background-color: rgba(255, 255, 255, 0.2);
         }
-
-        .main-content {
-            flex: 1;
-            margin-left: 250px;
-            padding: 20px;
+        
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+            padding: 2rem;
         }
-
-        .page-header {
-            background: white;
-            padding: 20px;
-            border-radius: 10px;
-            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
-            margin-bottom: 20px;
-        }
-
+        
         .stats-grid {
             display: grid;
             grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
-            gap: 20px;
-            margin-bottom: 30px;
+            gap: 1.5rem;
+            margin-bottom: 2rem;
         }
-
+        
         .stat-card {
             background: white;
-            padding: 20px;
+            padding: 1.5rem;
             border-radius: 10px;
             box-shadow: 0 2px 10px rgba(0,0,0,0.1);
-            text-align: center;
-        }
-
-        .stat-card i {
-            font-size: 2.5rem;
-            margin-bottom: 10px;
-        }
-
-        .stat-card h3 {
-            font-size: 2rem;
-            margin-bottom: 5px;
-        }
-
-        .content-card {
-            background: white;
-            padding: 20px;
-            border-radius: 10px;
-            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
-            margin-bottom: 20px;
-        }
-
-        .btn {
-            padding: 10px 20px;
-            border: none;
-            border-radius: 5px;
-            cursor: pointer;
-            text-decoration: none;
-            display: inline-flex;
+            display: flex;
             align-items: center;
-            gap: 8px;
-            font-size: 14px;
-            transition: all 0.3s ease;
+            gap: 15px;
         }
-
-        .btn-primary {
-            background: #667eea;
+        
+        .stat-icon {
+            width: 60px;
+            height: 60px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 24px;
             color: white;
         }
-
-        .btn-success {
-            background: #28a745;
-            color: white;
-        }
-
-        .btn-danger {
-            background: #dc3545;
-            color: white;
-        }
-
-        .btn:hover {
-            transform: translateY(-2px);
-            box-shadow: 0 4px 15px rgba(0,0,0,0.2);
-        }
-
-        .table-container {
-            overflow-x: auto;
-        }
-
-        table {
-            width: 100%;
-            border-collapse: collapse;
-            margin-top: 20px;
-        }
-
-        th, td {
-            padding: 12px;
-            text-align: left;
-            border-bottom: 1px solid #ddd;
-        }
-
-        th {
-            background-color: #f8f9fa;
-            font-weight: 600;
-        }
-
-        .modal {
-            display: none;
-            position: fixed;
-            z-index: 1000;
-            left: 0;
-            top: 0;
-            width: 100%;
-            height: 100%;
-            background-color: rgba(0,0,0,0.5);
-        }
-
-        .modal-content {
-            background-color: white;
-            margin: 5% auto;
-            padding: 20px;
+        
+        .stat-icon.donors { background: linear-gradient(135deg, #ff6b6b, #ee5a52); }
+        .stat-icon.donations { background: linear-gradient(135deg, #4ecdc4, #44a08d); }
+        .stat-icon.requests { background: linear-gradient(135deg, #45b7d1, #96c93d); }
+        .stat-icon.units { background: linear-gradient(135deg, #f093fb, #f5576c); }
+        
+        .tabs {
+            display: flex;
+            background: white;
             border-radius: 10px;
-            width: 90%;
-            max-width: 500px;
+            margin-bottom: 2rem;
+            overflow: hidden;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
         }
-
+        
+        .tab {
+            flex: 1;
+            padding: 1rem;
+            text-align: center;
+            cursor: pointer;
+            background: white;
+            border: none;
+            transition: all 0.3s;
+        }
+        
+        .tab.active {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+        }
+        
+        .tab-content {
+            display: none;
+            background: white;
+            border-radius: 10px;
+            padding: 2rem;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        
+        .tab-content.active {
+            display: block;
+        }
+        
+        .form-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 1rem;
+            margin-bottom: 1rem;
+        }
+        
         .form-group {
-            margin-bottom: 15px;
+            margin-bottom: 1rem;
         }
-
+        
         .form-group label {
             display: block;
             margin-bottom: 5px;
-            font-weight: 500;
+            font-weight: 600;
+            color: #555;
         }
-
+        
         .form-group input,
         .form-group select,
         .form-group textarea {
             width: 100%;
             padding: 10px;
-            border: 1px solid #ddd;
+            border: 2px solid #e1e1e1;
             border-radius: 5px;
             font-size: 14px;
+            transition: border-color 0.3s;
         }
-
-        .close {
-            color: #aaa;
-            float: right;
-            font-size: 28px;
-            font-weight: bold;
-            cursor: pointer;
+        
+        .form-group input:focus,
+        .form-group select:focus,
+        .form-group textarea:focus {
+            outline: none;
+            border-color: #667eea;
         }
-
-        .close:hover {
-            color: black;
-        }
-
-        .blood-group-grid {
-            display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
-            gap: 15px;
-            margin-top: 20px;
-        }
-
-        .blood-group-card {
-            background: linear-gradient(135deg, #ff6b6b, #ee5a24);
+        
+        .btn {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
             color: white;
-            padding: 15px;
-            border-radius: 10px;
-            text-align: center;
-        }
-
-        .blood-group-card h4 {
-            font-size: 1.5rem;
-            margin-bottom: 5px;
-        }
-
-        .alert {
-            padding: 15px;
-            margin-bottom: 20px;
+            padding: 12px 24px;
+            border: none;
             border-radius: 5px;
+            cursor: pointer;
+            font-size: 14px;
+            transition: transform 0.2s;
         }
-
-        .alert-success {
-            background-color: #d4edda;
-            border-color: #c3e6cb;
-            color: #155724;
+        
+        .btn:hover {
+            transform: translateY(-2px);
         }
-
+        
+        .table-container {
+            overflow-x: auto;
+        }
+        
+        .table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 1rem;
+        }
+        
+        .table th,
+        .table td {
+            padding: 12px;
+            text-align: left;
+            border-bottom: 1px solid #e1e1e1;
+        }
+        
+        .table th {
+            background: #f8f9fa;
+            font-weight: 600;
+            color: #555;
+        }
+        
         .badge {
             padding: 4px 8px;
-            border-radius: 4px;
+            border-radius: 12px;
             font-size: 12px;
-            font-weight: 500;
+            font-weight: 600;
         }
-
-        .badge-success {
-            background-color: #28a745;
+        
+        .badge.active { background: #d4edda; color: #155724; }
+        .badge.pending { background: #fff3cd; color: #856404; }
+        .badge.completed { background: #d1ecf1; color: #0c5460; }
+        .badge.urgent { background: #f8d7da; color: #721c24; }
+        .badge.normal { background: #e2e3e5; color: #383d41; }
+        
+        .blood-type {
+            display: inline-block;
+            background: #dc3545;
             color: white;
+            padding: 4px 8px;
+            border-radius: 12px;
+            font-weight: bold;
+            font-size: 12px;
         }
-
-        .badge-warning {
-            background-color: #ffc107;
-            color: #212529;
+        
+        .inventory-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+            gap: 1rem;
+            margin: 1rem 0;
         }
-
-        .badge-danger {
-            background-color: #dc3545;
-            color: white;
+        
+        .inventory-card {
+            background: white;
+            padding: 1rem;
+            border-radius: 8px;
+            text-align: center;
+            border-left: 4px solid #dc3545;
         }
-
-        .badge-info {
-            background-color: #17a2b8;
-            color: white;
+        
+        .inventory-card h3 {
+            color: #dc3545;
+            margin-bottom: 0.5rem;
+        }
+        
+        .units {
+            font-size: 24px;
+            font-weight: bold;
+            color: #333;
+        }
+        
+        .alert {
+            padding: 1rem;
+            border-radius: 5px;
+            margin-bottom: 1rem;
+        }
+        
+        .alert.success {
+            background: #d4edda;
+            color: #155724;
+            border: 1px solid #c3e6cb;
         }
     </style>
 </head>
 <body>
-    <div class="wrapper">
-        <!-- Sidebar -->
-        <aside class="sidebar">
-            <div class="sidebar-header">
-                <h3><i class="fas fa-tint"></i> Blood Bank</h3>
-                <p><?php echo ucfirst($user_role); ?></p>
-            </div>
-            <ul class="sidebar-menu">
-                <li><a href="blood-bank.php?page=overview" class="<?php echo $current_page === 'overview' ? 'active' : ''; ?>"><i class="fas fa-home"></i> Overview</a></li>
-                
-                <?php if (in_array($user_role, ['admin', 'doctor', 'nurse', 'receptionist'])): ?>
-                <li><a href="blood-bank.php?page=donations" class="<?php echo $current_page === 'donations' ? 'active' : ''; ?>"><i class="fas fa-hand-holding-heart"></i> Donations</a></li>
-                <li><a href="blood-bank.php?page=inventory" class="<?php echo $current_page === 'inventory' ? 'active' : ''; ?>"><i class="fas fa-warehouse"></i> Inventory</a></li>
-                <li><a href="blood-bank.php?page=requests" class="<?php echo $current_page === 'requests' ? 'active' : ''; ?>"><i class="fas fa-clipboard-list"></i> Requests</a></li>
-                <?php endif; ?>
-                
-                <?php if ($user_role === 'patient'): ?>
-                <li><a href="blood-bank.php?page=my-donations" class="<?php echo $current_page === 'my-donations' ? 'active' : ''; ?>"><i class="fas fa-heart"></i> My Donations</a></li>
-                <li><a href="blood-bank.php?page=my-requests" class="<?php echo $current_page === 'my-requests' ? 'active' : ''; ?>"><i class="fas fa-list"></i> My Requests</a></li>
-                <?php endif; ?>
-                
-                <li><a href="dashboard.php"><i class="fas fa-arrow-left"></i> Back to Dashboard</a></li>
-            </ul>
-        </aside>
-
-        <!-- Main Content -->
-        <main class="main-content">
-            <?php if (isset($success_message)): ?>
-                <div class="alert alert-success">
-                    <i class="fas fa-check-circle"></i> <?php echo $success_message; ?>
-                </div>
-            <?php endif; ?>
-
-            <?php if ($current_page === 'overview'): ?>
-                <div class="page-header">
-                    <h1><i class="fas fa-tint"></i> Blood Bank Management</h1>
-                    <p>Manage blood donations, inventory, and requests</p>
-                </div>
-
-                <?php if (in_array($user_role, ['admin', 'doctor', 'nurse', 'receptionist'])): ?>
-                    <div class="stats-grid">
-                        <div class="stat-card">
-                            <i class="fas fa-tint" style="color: #dc3545;"></i>
-                            <h3><?php echo $stats['total_units']; ?></h3>
-                            <p>Available Blood Units</p>
-                        </div>
-                        <div class="stat-card">
-                            <i class="fas fa-hand-holding-heart" style="color: #28a745;"></i>
-                            <h3><?php echo $stats['recent_donations']; ?></h3>
-                            <p>Donations This Month</p>
-                        </div>
-                        <div class="stat-card">
-                            <i class="fas fa-clipboard-list" style="color: #ffc107;"></i>
-                            <h3><?php echo $stats['pending_requests']; ?></h3>
-                            <p>Pending Requests</p>
-                        </div>
-                    </div>
-
-                    <div class="content-card">
-                        <h3>Blood Group Availability</h3>
-                        <div class="blood-group-grid">
-                            <?php
-                            $blood_groups = ['A+', 'A-', 'B+', 'B-', 'AB+', 'AB-', 'O+', 'O-'];
-                            $availability = [];
-                            foreach ($stats['by_blood_group'] as $group) {
-                                $availability[$group['blood_group']] = $group['total'];
-                            }
-                            
-                            foreach ($blood_groups as $group):
-                                $units = $availability[$group] ?? 0;
-                            ?>
-                                <div class="blood-group-card">
-                                    <h4><?php echo $group; ?></h4>
-                                    <p><?php echo $units; ?> units</p>
-                                </div>
-                            <?php endforeach; ?>
-                        </div>
-                    </div>
-
-                    <div class="content-card">
-                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
-                            <h3>Quick Actions</h3>
-                        </div>
-                        <div style="display: flex; gap: 15px; flex-wrap: wrap;">
-                            <button class="btn btn-primary" onclick="openModal('donationModal')">
-                                <i class="fas fa-plus"></i> Record Donation
-                            </button>
-                            <button class="btn btn-success" onclick="openModal('requestModal')">
-                                <i class="fas fa-plus"></i> Create Request
-                            </button>
-                        </div>
-                    </div>
-                <?php endif; ?>
-
-                <?php if ($user_role === 'patient'): ?>
-                    <div class="stats-grid">
-                        <div class="stat-card">
-                            <i class="fas fa-heart" style="color: #dc3545;"></i>
-                            <h3><?php echo count($patient_data['donations']); ?></h3>
-                            <p>My Donations</p>
-                        </div>
-                        <div class="stat-card">
-                            <i class="fas fa-list" style="color: #17a2b8;"></i>
-                            <h3><?php echo count($patient_data['requests']); ?></h3>
-                            <p>My Requests</p>
-                        </div>
-                    </div>
-
-                    <div class="content-card">
-                        <h3>Recent Donations</h3>
-                        <?php if (!empty($patient_data['donations'])): ?>
-                            <div class="table-container">
-                                <table>
-                                    <thead>
-                                        <tr>
-                                            <th>Date</th>
-                                            <th>Blood Group</th>
-                                            <th>Units</th>
-                                            <th>Status</th>
-                                        </tr>
-                                    </thead>
-                                    <tbody>
-                                        <?php foreach (array_slice($patient_data['donations'], 0, 5) as $donation): ?>
-                                            <tr>
-                                                <td><?php echo date('M d, Y', strtotime($donation['donation_date'])); ?></td>
-                                                <td><strong><?php echo $donation['blood_group']; ?></strong></td>
-                                                <td><?php echo $donation['units_collected']; ?></td>
-                                                <td><span class="badge badge-success"><?php echo ucfirst($donation['status']); ?></span></td>
-                                            </tr>
-                                        <?php endforeach; ?>
-                                    </tbody>
-                                </table>
-                            </div>
-                        <?php else: ?>
-                            <p>No donations recorded yet.</p>
-                        <?php endif; ?>
-                    </div>
-                <?php endif; ?>
-
-            <?php elseif ($current_page === 'donations' && in_array($user_role, ['admin', 'doctor', 'nurse', 'receptionist'])): ?>
-                <div class="page-header">
-                    <h1><i class="fas fa-hand-holding-heart"></i> Blood Donations</h1>
-                    <button class="btn btn-primary" onclick="openModal('donationModal')" style="float: right;">
-                        <i class="fas fa-plus"></i> Record New Donation
-                    </button>
-                </div>
-
-                <div class="content-card">
-                    <div class="table-container">
-                        <table>
-                            <thead>
-                                <tr>
-                                    <th>Date</th>
-                                    <th>Donor</th>
-                                    <th>Phone</th>
-                                    <th>Blood Group</th>
-                                    <th>Units</th>
-                                    <th>Status</th>
-                                    <th>Recorded By</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                <?php foreach ($page_data['donations'] as $donation): ?>
-                                    <tr>
-                                        <td><?php echo date('M d, Y', strtotime($donation['donation_date'])); ?></td>
-                                        <td><?php echo htmlspecialchars($donation['first_name'] . ' ' . $donation['last_name']); ?></td>
-                                        <td><?php echo htmlspecialchars($donation['phone']); ?></td>
-                                        <td><strong><?php echo $donation['blood_group']; ?></strong></td>
-                                        <td><?php echo $donation['units_collected']; ?></td>
-                                        <td><span class="badge badge-success"><?php echo ucfirst($donation['status']); ?></span></td>
-                                        <td><?php echo htmlspecialchars($donation['created_by_name']); ?></td>
-                                    </tr>
-                                <?php endforeach; ?>
-                            </tbody>
-                        </table>
-                    </div>
-                </div>
-
-            <?php elseif ($current_page === 'inventory' && in_array($user_role, ['admin', 'doctor', 'nurse', 'receptionist'])): ?>
-                <div class="page-header">
-                    <h1><i class="fas fa-warehouse"></i> Blood Inventory</h1>
-                </div>
-
-                <div class="content-card">
-                    <div class="table-container">
-                        <table>
-                            <thead>
-                                <tr>
-                                    <th>Blood Group</th>
-                                    <th>Units Available</th>
-                                    <th>Collection Date</th>
-                                    <th>Expiry Date</th>
-                                    <th>Days to Expiry</th>
-                                    <th>Status</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                <?php foreach ($page_data['inventory'] as $item): 
-                                    $days_to_expiry = (strtotime($item['expiry_date']) - time()) / (60 * 60 * 24);
-                                    $status_class = $days_to_expiry <= 7 ? 'badge-danger' : ($days_to_expiry <= 14 ? 'badge-warning' : 'badge-success');
-                                ?>
-                                    <tr>
-                                        <td><strong><?php echo $item['blood_group']; ?></strong></td>
-                                        <td><?php echo $item['units_available']; ?></td>
-                                        <td><?php echo date('M d, Y', strtotime($item['collection_date'])); ?></td>
-                                        <td><?php echo date('M d, Y', strtotime($item['expiry_date'])); ?></td>
-                                        <td><?php echo floor($days_to_expiry); ?> days</td>
-                                        <td><span class="badge <?php echo $status_class; ?>">
-                                            <?php echo $days_to_expiry <= 7 ? 'Expiring Soon' : ($days_to_expiry <= 14 ? 'Monitor' : 'Good'); ?>
-                                        </span></td>
-                                    </tr>
-                                <?php endforeach; ?>
-                            </tbody>
-                        </table>
-                    </div>
-                </div>
-
-            <?php elseif ($current_page === 'requests' && in_array($user_role, ['admin', 'doctor', 'nurse', 'receptionist'])): ?>
-                <div class="page-header">
-                    <h1><i class="fas fa-clipboard-list"></i> Blood Requests</h1>
-                    <button class="btn btn-success" onclick="openModal('requestModal')" style="float: right;">
-                        <i class="fas fa-plus"></i> Create New Request
-                    </button>
-                </div>
-
-                <div class="content-card">
-                    <div class="table-container">
-                        <table>
-                            <thead>
-                                <tr>
-                                    <th>Date</th>
-                                    <th>Patient</th>
-                                    <th>Phone</th>
-                                    <th>Blood Group</th>
-                                    <th>Units Needed</th>
-                                    <th>Urgency</th>
-                                    <th>Status</th>
-                                    <th>Created By</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                <?php foreach ($page_data['requests'] as $request): 
-                                    $urgency_class = $request['urgency'] === 'critical' ? 'badge-danger' : ($request['urgency'] === 'high' ? 'badge-warning' : 'badge-info');
-                                    $status_class = $request['status'] === 'fulfilled' ? 'badge-success' : ($request['status'] === 'pending' ? 'badge-warning' : 'badge-danger');
-                                ?>
-                                    <tr>
-                                        <td><?php echo date('M d, Y', strtotime($request['request_date'])); ?></td>
-                                        <td><?php echo htmlspecialchars($request['first_name'] . ' ' . $request['last_name']); ?></td>
-                                        <td><?php echo htmlspecialchars($request['phone']); ?></td>
-                                        <td><strong><?php echo $request['blood_group']; ?></strong></td>
-                                        <td><?php echo $request['units_needed']; ?></td>
-                                        <td><span class="badge <?php echo $urgency_class; ?>"><?php echo ucfirst($request['urgency']); ?></span></td>
-                                        <td><span class="badge <?php echo $status_class; ?>"><?php echo ucfirst($request['status']); ?></span></td>
-                                        <td><?php echo htmlspecialchars($request['created_by_name']); ?></td>
-                                    </tr>
-                                <?php endforeach; ?>
-                            </tbody>
-                        </table>
-                    </div>
-                </div>
-
-            <?php elseif ($current_page === 'my-donations' && $user_role === 'patient'): ?>
-                <div class="page-header">
-                    <h1><i class="fas fa-heart"></i> My Donations</h1>
-                </div>
-
-                <div class="content-card">
-                    <?php if (!empty($patient_data['donations'])): ?>
-                        <div class="table-container">
-                            <table>
-                                <thead>
-                                    <tr>
-                                        <th>Date</th>
-                                        <th>Blood Group</th>
-                                        <th>Units Donated</th>
-                                        <th>Status</th>
-                                        <th>Notes</th>
-                                    </tr>
-                                </thead>
-                                <tbody>
-                                    <?php foreach ($patient_data['donations'] as $donation): ?>
-                                        <tr>
-                                            <td><?php echo date('M d, Y', strtotime($donation['donation_date'])); ?></td>
-                                            <td><strong><?php echo $donation['blood_group']; ?></strong></td>
-                                            <td><?php echo $donation['units_collected']; ?></td>
-                                            <td><span class="badge badge-success"><?php echo ucfirst($donation['status']); ?></span></td>
-                                            <td><?php echo htmlspecialchars($donation['notes']); ?></td>
-                                        </tr>
-                                    <?php endforeach; ?>
-                                </tbody>
-                            </table>
-                        </div>
-                    <?php else: ?>
-                        <p>You haven't made any blood donations yet.</p>
-                    <?php endif; ?>
-                </div>
-
-            <?php elseif ($current_page === 'my-requests' && $user_role === 'patient'): ?>
-                <div class="page-header">
-                    <h1><i class="fas fa-list"></i> My Blood Requests</h1>
-                </div>
-
-                <div class="content-card">
-                    <?php if (!empty($patient_data['requests'])): ?>
-                        <div class="table-container">
-                            <table>
-                                <thead>
-                                    <tr>
-                                        <th>Date</th>
-                                        <th>Blood Group</th>
-                                        <th>Units Needed</th>
-                                        <th>Urgency</th>
-                                        <th>Status</th>
-                                        <th>Notes</th>
-                                    </tr>
-                                </thead>
-                                <tbody>
-                                    <?php foreach ($patient_data['requests'] as $request): 
-                                        $urgency_class = $request['urgency'] === 'critical' ? 'badge-danger' : ($request['urgency'] === 'high' ? 'badge-warning' : 'badge-info');
-                                        $status_class = $request['status'] === 'fulfilled' ? 'badge-success' : ($request['status'] === 'pending' ? 'badge-warning' : 'badge-danger');
-                                    ?>
-                                        <tr>
-                                            <td><?php echo date('M d, Y', strtotime($request['request_date'])); ?></td>
-                                            <td><strong><?php echo $request['blood_group']; ?></strong></td>
-                                            <td><?php echo $request['units_needed']; ?></td>
-                                            <td><span class="badge <?php echo $urgency_class; ?>"><?php echo ucfirst($request['urgency']); ?></span></td>
-                                            <td><span class="badge <?php echo $status_class; ?>"><?php echo ucfirst($request['status']); ?></span></td>
-                                            <td><?php echo htmlspecialchars($request['notes']); ?></td>
-                                        </tr>
-                                    <?php endforeach; ?>
-                                </tbody>
-                            </table>
-                        </div>
-                    <?php else: ?>
-                        <p>You haven't made any blood requests yet.</p>
-                    <?php endif; ?>
-                </div>
-            <?php endif; ?>
-        </main>
+    <div class="header">
+        <h1><i class="fas fa-tint"></i> Blood Bank Management</h1>
+        <div class="nav-links">
+            <a href="dashboard.php"><i class="fas fa-home"></i> Dashboard</a>
+            <a href="logout.php"><i class="fas fa-sign-out-alt"></i> Logout</a>
+        </div>
     </div>
 
-    <!-- Donation Modal -->
-    <?php if (in_array($user_role, ['admin', 'doctor', 'nurse', 'receptionist'])): ?>
-    <div id="donationModal" class="modal">
-        <div class="modal-content">
-            <span class="close" onclick="closeModal('donationModal')">&times;</span>
-            <h2>Record Blood Donation</h2>
+    <div class="container">
+        <?php if (isset($success)): ?>
+            <div class="alert success">
+                <i class="fas fa-check-circle"></i> <?php echo $success; ?>
+            </div>
+        <?php endif; ?>
+
+        <!-- Statistics -->
+        <div class="stats-grid">
+            <div class="stat-card">
+                <div class="stat-icon donors">
+                    <i class="fas fa-users"></i>
+                </div>
+                <div>
+                    <h3><?php echo number_format($stats['total_donors']); ?></h3>
+                    <p>Active Donors</p>
+                </div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-icon donations">
+                    <i class="fas fa-hand-holding-heart"></i>
+                </div>
+                <div>
+                    <h3><?php echo number_format($stats['total_donations']); ?></h3>
+                    <p>Total Donations</p>
+                </div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-icon requests">
+                    <i class="fas fa-clipboard-list"></i>
+                </div>
+                <div>
+                    <h3><?php echo number_format($stats['pending_requests']); ?></h3>
+                    <p>Pending Requests</p>
+                </div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-icon units">
+                    <i class="fas fa-flask"></i>
+                </div>
+                <div>
+                    <h3><?php echo number_format($stats['total_units']); ?></h3>
+                    <p>Units Available</p>
+                </div>
+            </div>
+        </div>
+
+        <!-- Blood Inventory -->
+        <div class="tab-content active">
+            <h2><i class="fas fa-warehouse"></i> Blood Inventory</h2>
+            <div class="inventory-grid">
+                <?php 
+                $blood_groups = ['A+', 'A-', 'B+', 'B-', 'AB+', 'AB-', 'O+', 'O-'];
+                foreach ($blood_groups as $group): 
+                    $units = 0;
+                    foreach ($inventory as $inv) {
+                        if ($inv['blood_group'] === $group) {
+                            $units = $inv['units_available'];
+                            break;
+                        }
+                    }
+                ?>
+                <div class="inventory-card">
+                    <h3><?php echo $group; ?></h3>
+                    <div class="units"><?php echo $units; ?></div>
+                    <small>Units Available</small>
+                </div>
+                <?php endforeach; ?>
+            </div>
+        </div>
+
+        <!-- Tabs -->
+        <div class="tabs">
+            <?php if (in_array($user_role, ['admin', 'doctor', 'nurse'])): ?>
+            <button class="tab active" onclick="showTab('donors')">
+                <i class="fas fa-users"></i> Donor Management
+            </button>
+            <button class="tab" onclick="showTab('donations')">
+                <i class="fas fa-hand-holding-heart"></i> Record Donation
+            </button>
+            <button class="tab" onclick="showTab('requests')">
+                <i class="fas fa-clipboard-list"></i> Blood Requests
+            </button>
+            <?php endif; ?>
+            <?php if ($user_role === 'patient'): ?>
+            <button class="tab active" onclick="showTab('my-donations')">
+                <i class="fas fa-heart"></i> My Donations
+            </button>
+            <button class="tab" onclick="showTab('donation-history')">
+                <i class="fas fa-history"></i> Donation History
+            </button>
+            <?php endif; ?>
+        </div>
+
+        <!-- Donor Management Tab -->
+        <?php if (in_array($user_role, ['admin', 'doctor', 'nurse'])): ?>
+        <div id="donors" class="tab-content active">
+            <h2><i class="fas fa-user-plus"></i> Register New Donor</h2>
+            <form method="POST">
+                <input type="hidden" name="action" value="add_donor">
+                <div class="form-grid">
+                    <div class="form-group">
+                        <label>First Name *</label>
+                        <input type="text" name="first_name" required>
+                    </div>
+                    <div class="form-group">
+                        <label>Last Name *</label>
+                        <input type="text" name="last_name" required>
+                    </div>
+                    <div class="form-group">
+                        <label>Email</label>
+                        <input type="email" name="email">
+                    </div>
+                    <div class="form-group">
+                        <label>Phone *</label>
+                        <input type="tel" name="phone" required>
+                    </div>
+                    <div class="form-group">
+                        <label>Blood Group *</label>
+                        <select name="blood_group" required>
+                            <option value="">Select Blood Group</option>
+                            <option value="A+">A+</option>
+                            <option value="A-">A-</option>
+                            <option value="B+">B+</option>
+                            <option value="B-">B-</option>
+                            <option value="AB+">AB+</option>
+                            <option value="AB-">AB-</option>
+                            <option value="O+">O+</option>
+                            <option value="O-">O-</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label>Date of Birth *</label>
+                        <input type="date" name="date_of_birth" required>
+                    </div>
+                    <div class="form-group">
+                        <label>Gender *</label>
+                        <select name="gender" required>
+                            <option value="">Select Gender</option>
+                            <option value="male">Male</option>
+                            <option value="female">Female</option>
+                            <option value="other">Other</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label>Last Donation Date</label>
+                        <input type="date" name="last_donation_date">
+                    </div>
+                </div>
+                <div class="form-group">
+                    <label>Address</label>
+                    <textarea name="address" rows="3"></textarea>
+                </div>
+                <div class="form-grid">
+                    <div class="form-group">
+                        <label>Emergency Contact</label>
+                        <input type="text" name="emergency_contact">
+                    </div>
+                    <div class="form-group">
+                        <label>Emergency Phone</label>
+                        <input type="tel" name="emergency_phone">
+                    </div>
+                </div>
+                <div class="form-group">
+                    <label>Medical History</label>
+                    <textarea name="medical_history" rows="3"></textarea>
+                </div>
+                <button type="submit" class="btn">
+                    <i class="fas fa-user-plus"></i> Register Donor
+                </button>
+            </form>
+
+            <h3 style="margin-top: 2rem;"><i class="fas fa-list"></i> Registered Donors</h3>
+            <div class="table-container">
+                <table class="table">
+                    <thead>
+                        <tr>
+                            <th>Donor ID</th>
+                            <th>Name</th>
+                            <th>Blood Group</th>
+                            <th>Phone</th>
+                            <th>Last Donation</th>
+                            <th>Next Eligible</th>
+                            <th>Status</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <?php foreach ($donors as $donor): ?>
+                        <tr>
+                            <td><?php echo htmlspecialchars($donor['donor_id']); ?></td>
+                            <td><?php echo htmlspecialchars($donor['first_name'] . ' ' . $donor['last_name']); ?></td>
+                            <td><span class="blood-type"><?php echo htmlspecialchars($donor['blood_group']); ?></span></td>
+                            <td><?php echo htmlspecialchars($donor['phone']); ?></td>
+                            <td><?php echo $donor['last_donation_date'] ? date('M d, Y', strtotime($donor['last_donation_date'])) : 'Never'; ?></td>
+                            <td><?php echo date('M d, Y', strtotime($donor['next_eligible_date'])); ?></td>
+                            <td><span class="badge <?php echo $donor['status']; ?>"><?php echo ucfirst($donor['status']); ?></span></td>
+                        </tr>
+                        <?php endforeach; ?>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        <!-- Record Donation Tab -->
+        <div id="donations" class="tab-content">
+            <h2><i class="fas fa-plus-circle"></i> Record Blood Donation</h2>
             <form method="POST">
                 <input type="hidden" name="action" value="add_donation">
-                
-                <div class="form-group">
-                    <label for="donor_patient_id">Donor Patient:</label>
-                    <select name="donor_patient_id" required>
-                        <option value="">Select Patient</option>
-                        <?php foreach ($patients as $patient): ?>
-                            <option value="<?php echo $patient['id']; ?>">
-                                <?php echo htmlspecialchars($patient['first_name'] . ' ' . $patient['last_name'] . ' (' . $patient['blood_group'] . ')'); ?>
+                <div class="form-grid">
+                    <div class="form-group">
+                        <label>Select Donor *</label>
+                        <select name="donor_id" required>
+                            <option value="">Select Donor</option>
+                            <?php foreach ($donors as $donor): ?>
+                            <option value="<?php echo $donor['id']; ?>">
+                                <?php echo htmlspecialchars($donor['donor_id'] . ' - ' . $donor['first_name'] . ' ' . $donor['last_name'] . ' (' . $donor['blood_group'] . ')'); ?>
                             </option>
-                        <?php endforeach; ?>
-                    </select>
+                            <?php endforeach; ?>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label>Blood Group *</label>
+                        <select name="blood_group" required>
+                            <option value="">Select Blood Group</option>
+                            <option value="A+">A+</option>
+                            <option value="A-">A-</option>
+                            <option value="B+">B+</option>
+                            <option value="B-">B-</option>
+                            <option value="AB+">AB+</option>
+                            <option value="AB-">AB-</option>
+                            <option value="O+">O+</option>
+                            <option value="O-">O-</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label>Units Collected *</label>
+                        <input type="number" name="units_collected" step="0.1" min="0.1" max="2" required>
+                    </div>
+                    <div class="form-group">
+                        <label>Donation Date *</label>
+                        <input type="date" name="donation_date" value="<?php echo date('Y-m-d'); ?>" required>
+                    </div>
+                    <div class="form-group">
+                        <label>Collection Center</label>
+                        <input type="text" name="collection_center" value="Main Hospital">
+                    </div>
+                    <div class="form-group">
+                        <label>Hemoglobin Level</label>
+                        <input type="number" name="hemoglobin_level" step="0.1" placeholder="g/dL">
+                    </div>
+                    <div class="form-group">
+                        <label>Blood Pressure</label>
+                        <input type="text" name="blood_pressure" placeholder="120/80">
+                    </div>
+                    <div class="form-group">
+                        <label>Temperature</label>
+                        <input type="number" name="temperature" step="0.1" placeholder="°F">
+                    </div>
+                    <div class="form-group">
+                        <label>Weight (kg)</label>
+                        <input type="number" name="weight" step="0.1">
+                    </div>
                 </div>
-                
                 <div class="form-group">
-                    <label for="blood_group">Blood Group:</label>
-                    <select name="blood_group" required>
-                        <option value="">Select Blood Group</option>
-                        <option value="A+">A+</option>
-                        <option value="A-">A-</option>
-                        <option value="B+">B+</option>
-                        <option value="B-">B-</option>
-                        <option value="AB+">AB+</option>
-                        <option value="AB-">AB-</option>
-                        <option value="O+">O+</option>
-                        <option value="O-">O-</option>
-                    </select>
-                </div>
-                
-                <div class="form-group">
-                    <label for="units_collected">Units Collected:</label>
-                    <input type="number" name="units_collected" min="1" max="10" required>
-                </div>
-                
-                <div class="form-group">
-                    <label for="donation_date">Donation Date:</label>
-                    <input type="date" name="donation_date" value="<?php echo date('Y-m-d'); ?>" required>
-                </div>
-                
-                <div class="form-group">
-                    <label for="notes">Notes:</label>
+                    <label>Notes</label>
                     <textarea name="notes" rows="3"></textarea>
                 </div>
-                
-                <button type="submit" class="btn btn-primary">Record Donation</button>
+                <button type="submit" class="btn">
+                    <i class="fas fa-plus-circle"></i> Record Donation
+                </button>
             </form>
-        </div>
-    </div>
 
-    <!-- Request Modal -->
-    <div id="requestModal" class="modal">
-        <div class="modal-content">
-            <span class="close" onclick="closeModal('requestModal')">&times;</span>
-            <h2>Create Blood Request</h2>
-            <form method="POST">
-                <input type="hidden" name="action" value="add_request">
-                
-                <div class="form-group">
-                    <label for="patient_id">Patient:</label>
-                    <select name="patient_id" required>
-                        <option value="">Select Patient</option>
-                        <?php foreach ($patients as $patient): ?>
-                            <option value="<?php echo $patient['id']; ?>">
-                                <?php echo htmlspecialchars($patient['first_name'] . ' ' . $patient['last_name'] . ' (' . $patient['blood_group'] . ')'); ?>
-                            </option>
+            <h3 style="margin-top: 2rem;"><i class="fas fa-history"></i> Recent Donations</h3>
+            <div class="table-container">
+                <table class="table">
+                    <thead>
+                        <tr>
+                            <th>Donation ID</th>
+                            <th>Donor</th>
+                            <th>Blood Group</th>
+                            <th>Units</th>
+                            <th>Date</th>
+                            <th>Status</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <?php foreach ($recent_donations as $donation): ?>
+                        <tr>
+                            <td><?php echo htmlspecialchars($donation['donation_id']); ?></td>
+                            <td><?php echo htmlspecialchars($donation['donor_name']); ?><br>
+                                <small><?php echo htmlspecialchars($donation['donor_code']); ?></small></td>
+                            <td><span class="blood-type"><?php echo htmlspecialchars($donation['blood_group']); ?></span></td>
+                            <td><?php echo $donation['units_collected']; ?> units</td>
+                            <td><?php echo date('M d, Y', strtotime($donation['donation_date'])); ?></td>
+                            <td><span class="badge <?php echo $donation['status']; ?>"><?php echo ucfirst($donation['status']); ?></span></td>
+                        </tr>
                         <?php endforeach; ?>
-                    </select>
-                </div>
-                
-                <div class="form-group">
-                    <label for="blood_group">Blood Group Needed:</label>
-                    <select name="blood_group" required>
-                        <option value="">Select Blood Group</option>
-                        <option value="A+">A+</option>
-                        <option value="A-">A-</option>
-                        <option value="B+">B+</option>
-                        <option value="B-">B-</option>
-                        <option value="AB+">AB+</option>
-                        <option value="AB-">AB-</option>
-                        <option value="O+">O+</option>
-                        <option value="O-">O-</option>
-                    </select>
-                </div>
-                
-                <div class="form-group">
-                    <label for="units_needed">Units Needed:</label>
-                    <input type="number" name="units_needed" min="1" max="20" required>
-                </div>
-                
-                <div class="form-group">
-                    <label for="urgency">Urgency:</label>
-                    <select name="urgency" required>
-                        <option value="">Select Urgency</option>
-                        <option value="low">Low</option>
-                        <option value="medium">Medium</option>
-                        <option value="high">High</option>
-                        <option value="critical">Critical</option>
-                    </select>
-                </div>
-                
-                <div class="form-group">
-                    <label for="notes">Notes:</label>
-                    <textarea name="notes" rows="3"></textarea>
-                </div>
-                
-                <button type="submit" class="btn btn-success">Create Request</button>
-            </form>
+                    </tbody>
+                </table>
+            </div>
         </div>
+
+        <!-- Blood Requests Tab -->
+        <div id="requests" class="tab-content">
+            <h2><i class="fas fa-plus-circle"></i> Create Blood Request</h2>
+            <form method="POST">
+                <input type="hidden" name="action" value="blood_request">
+                <div class="form-grid">
+                    <div class="form-group">
+                        <label>Patient *</label>
+                        <select name="patient_id" required>
+                            <option value="">Select Patient</option>
+                            <?php 
+                            $patients = $db->query("SELECT id, patient_id, first_name, last_name FROM patients ORDER BY first_name")->fetchAll();
+                            foreach ($patients as $patient): 
+                            ?>
+                            <option value="<?php echo $patient['id']; ?>">
+                                <?php echo htmlspecialchars($patient['patient_id'] . ' - ' . $patient['first_name'] . ' ' . $patient['last_name']); ?>
+                            </option>
+                            <?php endforeach; ?>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label>Blood Group *</label>
+                        <select name="blood_group" required>
+                            <option value="">Select Blood Group</option>
+                            <option value="A+">A+</option>
+                            <option value="A-">A-</option>
+                            <option value="B+">B+</option>
+                            <option value="B-">B-</option>
+                            <option value="AB+">AB+</option>
+                            <option value="AB-">AB-</option>
+                            <option value="O+">O+</option>
+                            <option value="O-">O-</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label>Units Requested *</label>
+                        <input type="number" name="units_requested" step="0.1" min="0.1" required>
+                    </div>
+                    <div class="form-group">
+                        <label>Urgency Level *</label>
+                        <select name="urgency_level" required>
+                            <option value="">Select Urgency</option>
+                            <option value="urgent">Urgent</option>
+                            <option value="normal">Normal</option>
+                            <option value="routine">Routine</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label>Required Date *</label>
+                        <input type="date" name="required_date" required>
+                    </div>
+                    <div class="form-group">
+                        <label>Requesting Doctor</label>
+                        <select name="requesting_doctor">
+                            <option value="">Select Doctor</option>
+                            <?php 
+                            $doctors = $db->query("SELECT id, first_name, last_name FROM doctors ORDER BY first_name")->fetchAll();
+                            foreach ($doctors as $doctor): 
+                            ?>
+                            <option value="<?php echo $doctor['id']; ?>">
+                                <?php echo htmlspecialchars($doctor['first_name'] . ' ' . $doctor['last_name']); ?>
+                            </option>
+                            <?php endforeach; ?>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label>Department</label>
+                        <input type="text" name="department">
+                    </div>
+                </div>
+                <div class="form-group">
+                    <label>Medical Reason *</label>
+                    <textarea name="medical_reason" rows="3" required></textarea>
+                </div>
+                <button type="submit" class="btn">
+                    <i class="fas fa-plus-circle"></i> Submit Request
+                </button>
+            </form>
+
+            <h3 style="margin-top: 2rem;"><i class="fas fa-list"></i> Blood Requests</h3>
+            <div class="table-container">
+                <table class="table">
+                    <thead>
+                        <tr>
+                            <th>Request ID</th>
+                            <th>Patient</th>
+                            <th>Blood Group</th>
+                            <th>Units</th>
+                            <th>Urgency</th>
+                            <th>Required Date</th>
+                            <th>Doctor</th>
+                            <th>Status</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <?php foreach ($blood_requests as $request): ?>
+                        <tr>
+                            <td><?php echo htmlspecialchars($request['request_id']); ?></td>
+                            <td><?php echo htmlspecialchars($request['patient_name']); ?><br>
+                                <small><?php echo htmlspecialchars($request['patient_code']); ?></small></td>
+                            <td><span class="blood-type"><?php echo htmlspecialchars($request['blood_group']); ?></span></td>
+                            <td><?php echo $request['units_requested']; ?> units</td>
+                            <td><span class="badge <?php echo $request['urgency_level']; ?>"><?php echo ucfirst($request['urgency_level']); ?></span></td>
+                            <td><?php echo date('M d, Y', strtotime($request['required_date'])); ?></td>
+                            <td><?php echo htmlspecialchars($request['doctor_name'] ?: 'Not assigned'); ?></td>
+                            <td><span class="badge <?php echo $request['status']; ?>"><?php echo ucfirst($request['status']); ?></span></td>
+                        </tr>
+                        <?php endforeach; ?>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+        <?php endif; ?>
+
+        <!-- Patient Dashboard -->
+        <?php if ($user_role === 'patient'): ?>
+        <div id="my-donations" class="tab-content active">
+            <h2><i class="fas fa-heart"></i> My Blood Donation Dashboard</h2>
+            <?php
+            // Get patient's donor record
+            $patient_donor = $db->prepare("SELECT * FROM blood_donors WHERE email = ? OR phone = ?");
+            $patient_info = $db->prepare("SELECT email, phone FROM patients WHERE id = ?");
+            $patient_info->execute([$_SESSION['patient_id'] ?? 0]);
+            $patient_data = $patient_info->fetch();
+            
+            if ($patient_data) {
+                $patient_donor->execute([$patient_data['email'], $patient_data['phone']]);
+                $donor_record = $patient_donor->fetch();
+            }
+            ?>
+            
+            <?php if ($donor_record): ?>
+                <div class="stats-grid">
+                    <div class="stat-card">
+                        <div class="stat-icon donations">
+                            <i class="fas fa-tint"></i>
+                        </div>
+                        <div>
+                            <h3><?php echo $donor_record['blood_group']; ?></h3>
+                            <p>My Blood Group</p>
+                        </div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-icon donors">
+                            <i class="fas fa-calendar"></i>
+                        </div>
+                        <div>
+                            <h3><?php echo $donor_record['last_donation_date'] ? date('M d, Y', strtotime($donor_record['last_donation_date'])) : 'Never'; ?></h3>
+                            <p>Last Donation</p>
+                        </div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-icon requests">
+                            <i class="fas fa-clock"></i>
+                        </div>
+                        <div>
+                            <h3><?php echo date('M d, Y', strtotime($donor_record['next_eligible_date'])); ?></h3>
+                            <p>Next Eligible Date</p>
+                        </div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-icon units">
+                            <i class="fas fa-award"></i>
+                        </div>
+                        <div>
+                            <?php 
+                            $total_donations = $db->prepare("SELECT COUNT(*) FROM blood_donations WHERE donor_id = ?");
+                            $total_donations->execute([$donor_record['id']]);
+                            $donation_count = $total_donations->fetchColumn();
+                            ?>
+                            <h3><?php echo $donation_count; ?></h3>
+                            <p>Total Donations</p>
+                        </div>
+                    </div>
+                </div>
+                
+                <div style="text-align: center; margin: 2rem 0;">
+                    <?php if (strtotime($donor_record['next_eligible_date']) <= time()): ?>
+                        <div class="alert success">
+                            <i class="fas fa-check-circle"></i> You are eligible to donate blood! Contact our blood bank to schedule your donation.
+                        </div>
+                    <?php else: ?>
+                        <div class="alert" style="background: #fff3cd; color: #856404; border: 1px solid #ffeaa7;">
+                            <i class="fas fa-info-circle"></i> You will be eligible to donate again on <?php echo date('M d, Y', strtotime($donor_record['next_eligible_date'])); ?>
+                        </div>
+                    <?php endif; ?>
+                </div>
+            <?php else: ?>
+                <div class="alert" style="background: #f8d7da; color: #721c24; border: 1px solid #f5c6cb;">
+                    <i class="fas fa-info-circle"></i> You are not registered as a blood donor yet. Contact our blood bank to register and start saving lives!
+                </div>
+            <?php endif; ?>
+        </div>
+
+        <div id="donation-history" class="tab-content">
+            <h2><i class="fas fa-history"></i> My Donation History</h2>
+            <?php if ($donor_record): ?>
+                <?php
+                $my_donations = $db->prepare("
+                    SELECT * FROM blood_donations 
+                    WHERE donor_id = ? 
+                    ORDER BY donation_date DESC
+                ");
+                $my_donations->execute([$donor_record['id']]);
+                $donations = $my_donations->fetchAll();
+                ?>
+                
+                <?php if ($donations): ?>
+                <div class="table-container">
+                    <table class="table">
+                        <thead>
+                            <tr>
+                                <th>Donation ID</th>
+                                <th>Date</th>
+                                <th>Units Donated</th>
+                                <th>Collection Center</th>
+                                <th>Status</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <?php foreach ($donations as $donation): ?>
+                            <tr>
+                                <td><?php echo htmlspecialchars($donation['donation_id']); ?></td>
+                                <td><?php echo date('M d, Y', strtotime($donation['donation_date'])); ?></td>
+                                <td><?php echo $donation['units_collected']; ?> units</td>
+                                <td><?php echo htmlspecialchars($donation['collection_center']); ?></td>
+                                <td><span class="badge <?php echo $donation['status']; ?>"><?php echo ucfirst($donation['status']); ?></span></td>
+                            </tr>
+                            <?php endforeach; ?>
+                        </tbody>
+                    </table>
+                </div>
+                <?php else: ?>
+                    <p style="text-align: center; color: #666; margin: 2rem 0;">No donation history found.</p>
+                <?php endif; ?>
+            <?php else: ?>
+                <p style="text-align: center; color: #666; margin: 2rem 0;">You need to be registered as a donor to view donation history.</p>
+            <?php endif; ?>
+        </div>
+        <?php endif; ?>
     </div>
-    <?php endif; ?>
 
     <script>
-        function openModal(modalId) {
-            document.getElementById(modalId).style.display = 'block';
-        }
-
-        function closeModal(modalId) {
-            document.getElementById(modalId).style.display = 'none';
-        }
-
-        // Close modal when clicking outside
-        window.onclick = function(event) {
-            if (event.target.classList.contains('modal')) {
-                event.target.style.display = 'none';
-            }
+        function showTab(tabName) {
+            // Hide all tab contents
+            const tabContents = document.querySelectorAll('.tab-content');
+            tabContents.forEach(content => {
+                content.classList.remove('active');
+            });
+            
+            // Remove active class from all tabs
+            const tabs = document.querySelectorAll('.tab');
+            tabs.forEach(tab => {
+                tab.classList.remove('active');
+            });
+            
+            // Show selected tab content
+            document.getElementById(tabName).classList.add('active');
+            
+            // Add active class to clicked tab
+            event.target.classList.add('active');
         }
     </script>
 </body>
