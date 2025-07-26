@@ -222,6 +222,9 @@ try {
                 <div>
                     <h1><i class="fas fa-home"></i> Dashboard</h1>
                     <p>Welcome back, <?php echo htmlspecialchars($user_name); ?>!</p>
+                    <div style="background-color: #f0f9ff; border-left: 4px solid #0ea5e9; padding: 12px; margin-top: 10px; border-radius: 4px;">
+                        <p style="margin: 0; color: #0c4a6e; font-weight: 500;"><i class="fas fa-hand-wave" style="color: #f59e0b;"></i> Hello! Have a great day at the hospital!</p>
+                    </div>
                 </div>
                 <div class="header-actions">
                     <div class="user-info">
